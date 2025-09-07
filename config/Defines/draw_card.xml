@@ -1,0 +1,53 @@
+<module name="cfg">
+
+    <!-- 稀有度配置表（对应 #RarityConfig.xlsx） -->
+    <bean name="Rarity">
+        <var name="prefix" type="string" /> r,sr,ssr 前缀
+        <var name="weight" type="int" />
+        <var name="min_number" type="int"/>
+        <var name="max_number" type="int"/>
+    </bean>
+
+    <!-- 数值范围结构 -->
+    <bean name="ValueRange">
+        <var name="base" type="int"/>
+        <var name="variance" type="float"/>
+    </bean>
+
+    <!-- 基础属性表（对应 #BaseStats.xlsx） -->
+    <bean name="BaseStats">
+        <var name="max_level" type="int"/>
+        <var name="attack" type="ValueRange"/>
+        <var name="attack_speed" type="int"/>
+        <var name="attack_range" type="int"/>
+        <var name="mp" type="int"/>
+        <var name="mp_cost" type="int"/>
+        <var name="mp_regen" type="int"/>
+        <var name="defense" type="ValueRange"/>
+        <var name="hp" type="int"/>
+        <var name="hp_regen" type="int"/>
+        <var name="move_speed" type="int"/>
+        <var name="spell_class" type="int"/>
+    </bean>
+
+
+
+    <!-- 成长配置结构 -->
+    <bean name="Growth">
+        <var name="attack_per_level" type="int"/>
+        <var name="hp_per_level" type="int"/>
+        <var name="defense_per_level" type="int"/>
+        <var name="mp_per_level" type="int"/>
+        <var name="coefficient" type="int"/>
+    </bean>
+
+
+    <bean name="DrawCard">
+        <var name="rarity_level" type="int"/>
+        <var name="rarity" type="Rarity"/>
+        <var name="base_stats" type="BaseStats"/>
+        <var name="growth" type="Growth"/>
+    </bean>
+	
+	<table name="TbDrawCard" value="DrawCard" input="draw_card.xlsx"/>
+</module>

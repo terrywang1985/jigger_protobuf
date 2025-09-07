@@ -1,0 +1,260 @@
+
+syntax = "proto3";
+package game;
+
+import "battle.proto";
+
+option go_package = "server/src/proto";
+
+
+
+message RoomPlayer {
+  uint64 uid = 1;
+  string name = 2;
+  //Position position = 3;
+}
+
+message Room {
+  string id = 1;
+  string name = 2;
+  int32 max_players = 3; // 最大玩家数
+  int32 current_players = 4; // 当前玩家数
+}
+
+message RoomDetail {
+  Room room = 1;
+  repeated RoomPlayer current_players = 2; // 房间内的玩家列表
+}
+
+// 客户端 -> 网关
+message AuthRequest {
+  uint64 uid = 1;               // 用户唯一标识
+  string token = 2;             // 登录服务器颁发的临时令牌
+  string protocol_version = 3;  // 协议版本
+  string client_version = 4;    // 客户端版本
+  string device_type = 5;       // 设备类型
+  string device_id = 6;         // 设备ID
+  string app_id = 7;            // 应用ID
+  string nonce = 8;             // 随机数（防重放）
+  int64 timestamp = 9;          // 请求时间戳
+  string signature = 10;        // 请求签名
+}
+
+// 网关 -> 客户端
+message AuthResponse {
+  ErrorCode ret = 1;            // 错误码
+  uint64 uid = 2;               // 用户唯一标识
+  string conn_id = 3;           // 连接ID
+  string server_time = 4;       // 服务器时间
+  int64 session_expiry = 5;     // 会话过期时间
+  string nickname = 6;          // 用户昵称
+  int32 level = 7;              // 用户等级
+  int64 exp = 8;                // 经验值
+  int64 gold = 9;               // 金币数量
+  int64 diamond = 10;           // 钻石数量
+  string error_msg = 11;        // 错误详细信息
+}
+
+
+message GetRoomListRequest {
+}
+
+message GetRoomListResponse {
+  ErrorCode ret = 1;
+  repeated Room rooms = 2;
+}
+
+message CreateRoomRequest {
+  string name = 1;
+}
+
+message CreateRoomResponse {
+  ErrorCode ret = 1;
+  Room room = 2;
+}
+
+message JoinRoomRequest {
+  string roomId = 1;
+}
+
+message JoinRoomResponse {
+  ErrorCode ret = 1;
+}
+
+message LeaveRoomRequest {
+  string playerId = 1;
+}
+
+message LeaveRoomResponse {
+  ErrorCode ret = 1;
+  Room room = 2;
+}
+
+message GetReadyRequest {
+  string playerId = 1;
+}
+
+message GetReadyResponse {
+  ErrorCode ret = 1;
+}
+
+
+//背包信息
+message BackpackInfo
+{
+  repeated battle.Card cards = 1;
+}
+
+message UserInfo{
+  uint64 uid = 1;
+  string name = 2;
+  int64 exp = 3;
+  int64 gold = 4;
+  int64 diamond = 5;
+  int32 draw_card_count = 6;
+  BackpackInfo backpack = 7;
+}
+
+message GetUserInfoRequest {
+  uint64 uid = 1;
+}
+message GetUserInfoResponse {
+  ErrorCode ret = 1;
+  UserInfo user_info= 2;
+}
+
+
+//抽卡
+message DrawCardRequest {
+  uint64 uid = 1;
+  int32   count = 2;
+}
+
+
+message DrawCardResponse {
+  ErrorCode ret = 1;
+  repeated battle.Card cards = 2;
+}
+
+//开始游戏
+message StartGameBattleRequest
+{
+  uint64 uid = 1;
+}
+
+message StartGameBattleResponse
+{
+  ErrorCode ret = 1;
+  string battle_id = 2; // 战斗房间ID
+  string battle_server_addr = 3; // 战斗服务器地址
+}
+
+
+//游戏动作
+message GameActionRequest
+{
+  battle.GameAction action = 1;
+}
+
+message GameActionResponse
+{
+  ErrorCode ret = 1;
+}
+
+
+// 玩家初始数据（用于创建房间时传递）
+message PlayerInitData {
+  uint64 player_id = 1;
+  string player_name = 2; // 玩家名称
+}
+
+// 新增消息体
+message MatchRequest {
+  PlayerInitData player_data = 1;
+}
+
+message MatchResponse {
+  ErrorCode ret = 1;
+  string battle_id = 2;
+  string battle_server_addr = 3;
+}
+
+
+
+
+enum ErrorCode {
+  OK = 0;
+  INVALID_PARAM = 1;
+  SERVER_ERROR = 2;
+  AUTH_FAILED = 3;
+  NOT_FOUND = 4;
+  ALREADY_EXISTS = 5;
+  NOT_ALLOWED = 6;
+  NOT_SUPPORTED = 7;
+  TIMEOUT = 8;
+  INVALID_STATE = 9;
+  INVALID_ACTION = 10;
+  INVALID_CARD = 11;
+  INVALID_ROOM = 12;
+  INVALID_USER = 13;
+  PLAYER_ALREADY_IN_ROOM = 14;
+  }
+
+// 消息ID定义
+// 响应消息固定比请求消息ID大1
+// 例如：LOGIN_REQUEST = 0, LOGIN_RESPONSE = 1
+enum MessageId {
+  LOGIN_REQUEST = 0;
+  LOGIN_RESPONSE = 1;
+
+  AUTH_REQUEST = 2;
+  AUTH_RESPONSE = 3;
+
+  GET_USER_INFO_REQUEST = 4;
+  GET_USER_INFO_RESPONSE = 5;
+
+  GET_ROOM_LIST_REQUEST = 6;
+  GET_ROOM_LIST_RESPONSE = 7;
+
+  CREATE_ROOM_REQUEST = 8;
+  CREATE_ROOM_RESPONSE = 9;
+
+  JOIN_ROOM_REQUEST = 10;
+  JOIN_ROOM_RESPONSE = 11;
+
+  LEAVE_ROOM_REQUEST = 12;
+  LEAVE_ROOM_RESPONSE = 13;
+
+  ROOM_STATE_NOTIFICATION = 14; //未开始游戏前，房间内玩家信息
+  GAME_STATE_NOTIFICATION = 15; //游戏状态通知（包含当前玩家列表、卡牌桌面状态、当前轮到的玩家索引）
+
+  DRAW_CARD_REQUEST = 16;
+  DRAW_CARD_RESPONSE = 17;
+
+  GET_READY_REQUEST = 18;
+  GET_READY_RESPONSE = 19;
+
+  GAME_ACTION_REQUEST = 20;
+  GAME_ACTION_RESPONSE = 21;
+
+  GAME_ACTION_NOTIFICATION = 22; //游戏动作通知
+
+
+
+
+}
+
+message Message {
+  string clientId = 1;   //客户端唯一标识
+  int32 msgSerialNo = 2; //消息序列号, 每条消息加1
+  MessageId id = 3;   //消息ID
+  bytes data = 4;   //消息体
+}
+
+
+
+
+
+
+
+

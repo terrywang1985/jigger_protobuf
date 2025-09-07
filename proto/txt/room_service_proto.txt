@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package room_service;
+
+import "battle.proto";
+import "game.proto";
+
+option go_package = "server/src/proto";
+
+
+message CreateRoomRpcRequest {
+  game.PlayerInitData player = 1;
+}
+
+message CreateRoomRpcResponse {
+  game.ErrorCode ret = 1;
+  string room_id = 2;
+}
+
+message JoinRoomRpcRequest {
+  string room_id = 1;
+  game.PlayerInitData player = 2;
+}
+
+message JoinRoomRpcResponse {
+  game.ErrorCode ret = 1;
+  string room_id = 2;
+  repeated game.PlayerInitData players = 3; // 房间内的玩家列表
+}
+
+message LeaveRoomRpcRequest {
+  string room_id = 1;
+  uint64 player_id = 2; // 玩家ID
+}
+message LeaveRoomRpcResponse {
+  game.ErrorCode ret = 1;
+  string room_id = 2;
+  repeated game.PlayerInitData players = 3; // 房间内的玩家列表
+}
+
+message GetReadyRpcRequest {
+  uint64 player_id = 2; // 玩家ID
+}
+message GetReadyRpcResponse {
+  game.ErrorCode ret = 1;
+  string room_id = 2;
+  repeated game.PlayerInitData players = 3; // 房间内的玩家列表
+}
+
+//也可以做成所有人都准备了，就自动开始
+message StartGameRpcRequest {
+  string room_id = 1;
+}
+message StartGameRpcResponse {
+  game.ErrorCode ret = 1;
+  string room_id = 2;
+}
+
+
+
+message PlayerActionRpcRequest {
+  string room_id = 1;
+  uint64 player_id = 2;
+  battle.GameAction action = 3;
+}
+
+message PlayerActionRpcResponse {
+  game.ErrorCode ret = 1;
+}
+
+
+
+service RoomRpcService {
+  rpc CreateRoomRpc(CreateRoomRpcRequest) returns (CreateRoomRpcResponse);
+  rpc JoinRoomRpc(JoinRoomRpcRequest) returns (JoinRoomRpcResponse);
+  rpc LeaveRoomRpc(LeaveRoomRpcRequest) returns (LeaveRoomRpcResponse);
+  rpc GetReadyRpc(GetReadyRpcRequest) returns (GetReadyRpcResponse);
+  rpc StartGameRpc(StartGameRpcRequest) returns (StartGameRpcResponse);
+
+  // 使用流式 RPC 处理玩家操作
+  //rpc PlayerActionRpc(stream PlayerActionRpcRequest) returns (stream PlayerActionRpcResponse);
+  rpc PlayerActionRpc(PlayerActionRpcRequest) returns (PlayerActionRpcResponse);
+}

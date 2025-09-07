@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package battle;
+
+//import "google/protobuf/timestamp.proto";
+
+option go_package = "server/src/proto";
+
+// 卡牌定义
+message Card {
+  uint64 id = 1;
+  string name = 2;
+  string description = 3;
+  string image = 4;
+  int32  rarity = 5;
+  int32 spell_class = 6;
+}
+
+
+
+// --------------------
+// 基础数据类型定义
+message WordCard {
+  uint64 id = 1;          // 卡牌ID
+  string word = 2;       // 卡牌名称
+  string word_class = 3; // 名词
+  string description = 4; // 卡牌描述
+}
+
+//卡牌桌面
+message CardTable {
+  repeated WordCard cards = 1;  // 桌面上的卡牌
+  string sentence = 2; // 当前的句子
+}
+
+// 玩家数据（每个玩家拥有手牌、牌组等信息）
+message BattlePlayer {
+  uint64 id = 1;
+  string name = 2;
+  repeated WordCard cards = 3;   // 手牌（例如：最多5张卡牌）
+  int32 current_score = 4;     // 当前分数
+}
+
+
+// --------------------
+// 操作指令定义
+// --------------------
+enum ActionType {
+  ACTION_UNKNOWN = 0;
+  PLACE_CARD = 1;    // 出牌
+  SKIP_TURN = 2;    // 跳过回合
+  AUTO_CHAT = 3;    // 自动聊天
+}
+
+// 拖放卡牌操作
+message PlaceCardAction {
+  uint64 card_id = 1;
+  int32 target_index = 2; // 目标位置索引（例如：放置到桌面上的某个位置）
+}
+
+// 游戏操作日志，记录每次客户端的指令操作
+message GameAction {
+  uint64 player_id = 1;
+  ActionType action_type = 2;
+  int64 timestamp = 3;  // Unix 毫秒时间戳
+  oneof action_detail {
+    PlaceCardAction place_card = 4;
+  }
+}
+
+// --------------------
+// 服务器状态同步（帧消息）
+// --------------------
+enum ActionResult {
+  SUCCESS = 0;
+  ERROR_INVALID_TARGET = 1; // 无效的目标位置
+  ERROR_CARD_NOT_FOUND = 2; // 卡牌未找到
+  ERROR_NOT_YOUR_TURN = 3; // 不是你的回合
+  ERROR_UNKNOWN = 4; // 未知错误
+}
+
+message ActionResponse {
+  ActionResult result = 1;
+  int64 server_time = 2;
+  GameState state = 3;
+}
+
+message GameState {
+  repeated BattlePlayer players = 1; // 当前玩家列表
+  CardTable card_table = 2; // 当前卡牌桌面状态
+  int32 current_turn = 3; // 当前轮到的玩家索引
+}
+
+//游戏状态通知
+//包含当前玩家列表、卡牌桌面状态、当前轮到的玩家索引
+message GameStateNotify
+{
+  uint64 be_notified_uid = 1; // 被通知的用户ID
+  string room_id = 2;
+  battle.GameState game_state = 3; // 游戏状态
+}
+
+
+// 玩家操作请求
+message PlayerActionNotify {
+  uint64 be_notified_uid = 1; // 被通知的用户ID
+  string room_id = 2;
+  uint64 player_id = 3;  //操作者 id
+  battle.GameAction action = 4;
+}
+
+message NotifyResponse{
+  int32 ret = 1;
+}

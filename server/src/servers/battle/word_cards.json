@@ -1,0 +1,134 @@
+[
+  {
+    "word": "今天",
+    "pos": "Adv-TIME-DATE"
+  },
+  {
+    "word": "昨天",
+    "pos": "Adv-TIME-DATE"
+  },
+  {
+    "word": "明天",
+    "pos": "Adv-TIME-DATE"
+  },
+  {
+    "word": "早上",
+    "pos": "Adv-TIME-PART"
+  },
+  {
+    "word": "晚上",
+    "pos": "Adv-TIME-PART"
+  },
+  {
+    "word": "中午",
+    "pos": "Adv-TIME-PART"
+  },
+  {
+    "word": "在家里",
+    "pos": "Adv-LOC"
+  },
+  {
+    "word": "在学校",
+    "pos": "Adv-LOC"
+  },
+  {
+    "word": "在图书馆",
+    "pos": "Adv-LOC"
+  },
+  {
+    "word": "在公司",
+    "pos": "Adv-LOC"
+  },
+  {
+    "word": "在超市",
+    "pos": "Adv-LOC"
+  },
+  {
+    "word": "小明",
+    "pos": "NP-HUMAN-NAME"
+  },
+  {
+    "word": "我",
+    "pos": "NP-HUMAN-PRONOUN"
+  },
+  {
+    "word": "你",
+    "pos": "NP-HUMAN-PRONOUN"
+  },
+  {
+    "word": "他",
+    "pos": "NP-HUMAN-PRONOUN"
+  },
+  {
+    "word": "老师",
+    "pos": "NP-HUMAN-NAME"
+  },
+  {
+    "word": "妈妈",
+    "pos": "NP-HUMAN-KINSHIP"
+  },
+  {
+    "word": "爸爸",
+    "pos": "NP-HUMAN-KINSHIP"
+  },
+  {
+    "word": "吃饭",
+    "pos": "V-EVENT"
+  },
+  {
+    "word": "写作业",
+    "pos": "V-EVENT"
+  },
+  {
+    "word": "跑步",
+    "pos": "V-EVENT"
+  },
+  {
+    "word": "睡觉",
+    "pos": "V-EVENT"
+  },
+  {
+    "word": "购物",
+    "pos": "V-EVENT"
+  },
+  {
+    "word": "开心地",
+    "pos": "Adv-MANNER"
+  },
+  {
+    "word": "快速地",
+    "pos": "Adv-MANNER"
+  },
+  {
+    "word": "安静地",
+    "pos": "Adv-MANNER"
+  },
+  {
+    "word": "认真地",
+    "pos": "Adv-MANNER"
+  },
+  {
+    "word": "默默地",
+    "pos": "Adv-MANNER"
+  },
+  {
+    "word": "快乐的",
+    "pos": "Adj"
+  },
+  {
+    "word": "美丽的",
+    "pos": "Adj"
+  },
+  {
+    "word": "勤奋的",
+    "pos": "Adj"
+  },
+  {
+    "word": "安静的",
+    "pos": "Adj"
+  },
+  {
+    "word": "聪明的",
+    "pos": "Adj"
+  }
+]

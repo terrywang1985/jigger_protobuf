@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package game_service;
+
+import "battle.proto";
+import "game.proto";
+
+option go_package = "server/src/proto";
+
+
+message RoomDetailNotify {
+  uint64  be_notified_uid = 1; // 被通知的用户ID
+  game.RoomDetail room = 2;
+}
+
+
+service GameRpcService {
+  rpc RoomStatusNotifyRpc(RoomDetailNotify) returns (battle.NotifyResponse);
+  rpc GameStateNotifyRpc(battle.GameStateNotify) returns (battle.NotifyResponse);
+  rpc PlayerActionNotifyRpc(battle.PlayerActionNotify) returns (battle.NotifyResponse);
+}

@@ -1,0 +1,44 @@
+syntax = "proto3";
+package match;
+
+// import "battle.proto";
+import "game.proto";
+
+option go_package = "server/src/proto";
+
+message MatchResult{
+  game.ErrorCode ret = 1;
+  string result_message = 2;             // 错误信息
+}
+
+// 匹配请求, 服务器内部通信 请求都以SS开头
+message SSMatchRequest {
+  uint64 player_id = 1;
+  game.PlayerInitData player_data = 2;  // 玩家初始数据（卡组/位置等）
+}
+
+// 匹配响应
+message SSMatchResponse {
+  game.ErrorCode ret = 1;
+  string battle_id = 2;           // 战斗房间ID
+  string battle_server_addr = 3;  // 战斗服务器地址
+}
+
+
+
+// 匹配服务
+service MatchService {
+  rpc StartMatch(SSMatchRequest) returns (SSMatchResponse);
+}
+
+// 匹配结果通知（内部服务间通信）
+message SSMatchResultNotify {
+  repeated SSMatchRequest matched_players = 1;
+  string battle_id = 2;
+  // battle.Battlefield battlefield = 3;
+}
+
+// 内部服务注册
+service InternalMatchService {
+  rpc OnMatchSuccess(SSMatchResultNotify) returns (MatchResult);
+}

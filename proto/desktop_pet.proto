@@ -1,0 +1,102 @@
+
+// desktop_pet.proto
+syntax = "proto3";
+
+package desktop_pet;
+
+import "game.proto";
+
+option go_package = "server/src/proto";
+
+// 皮肤信息
+message SkinInfo {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    int32 price = 4;
+    string image_url = 5;
+    string rarity = 6; // 稀有度
+    bool owned = 7;    // 是否已拥有
+    bool equipped = 8; // 是否已装备
+}
+
+// 商城物品列表
+message MarketItemsResponse {
+    game.ErrorCode ret = 1;
+    repeated SkinInfo items = 2;
+}
+
+// 背包物品列表
+message BackpackItemsResponse {
+    game.ErrorCode ret = 1;
+    repeated SkinInfo items = 2;
+}
+
+// 购买请求
+message PurchaseRequest {
+    string item_id = 1;
+    string item_type = 2; // skin, decoration, etc.
+}
+
+// 购买响应
+message PurchaseResponse {
+    game.ErrorCode ret = 1;
+    string item_id = 2;
+}
+
+// 装备请求
+message EquipRequest {
+    string item_id = 1;
+}
+
+// 装备响应
+message EquipResponse {
+    game.ErrorCode ret = 1;
+    string item_id = 2;
+}
+
+// 皮肤数据请求
+message SkinDataRequest {
+    string skin_id = 1;
+}
+
+// 皮肤数据响应
+message SkinDataResponse {
+    game.ErrorCode ret = 1;
+    string skin_id = 2;
+    bytes skin_data = 3; // 加密的皮肤数据
+}
+
+// 桌面宠物消息ID
+enum DesktopPetMessageId {
+    // 基础消息ID范围
+    DESKTOP_PET_BASE = 0;
+    
+    // 认证相关
+    DESKTOP_PET_AUTH_REQUEST = 1001;
+    DESKTOP_PET_AUTH_RESPONSE = 1002;
+    
+    // 商城相关
+    GET_MARKET_ITEMS_REQUEST = 1003;
+    GET_MARKET_ITEMS_RESPONSE = 1004;
+    
+    // 背包相关
+    GET_BACKPACK_ITEMS_REQUEST = 1005;
+    GET_BACKPACK_ITEMS_RESPONSE = 1006;
+    
+    // 购买相关
+    PURCHASE_REQUEST = 1007;
+    PURCHASE_RESPONSE = 1008;
+    
+    // 装备相关
+    EQUIP_REQUEST = 1009;
+    EQUIP_RESPONSE = 1010;
+    
+    // 皮肤数据相关
+    GET_SKIN_DATA_REQUEST = 1011;
+    GET_SKIN_DATA_RESPONSE = 1012;
+    
+    // 动作同步
+    PET_ACTION_NOTIFICATION = 1013;
+    PET_CHAT_NOTIFICATION = 1014;
+}
