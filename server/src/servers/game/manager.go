@@ -2,7 +2,6 @@ package main
 
 import (
 	"log/slog"
-	"net"
 	"sync"
 )
 
@@ -12,7 +11,7 @@ type Manager struct {
 }
 
 // 创建玩家, connUUID 类似于 166034fe2377ce4f5b4a8c09d7dfbc6f  这样的字符串，标记连接, 后续等待玩家登陆绑定uid
-func (rm *Manager) GetOrCreatePlayer(connUUID string, conn net.Conn) *Player {
+func (rm *Manager) GetOrCreatePlayer(connUUID string, conn Connection) *Player {
 	player, loaded := rm.players.LoadOrStore(connUUID, NewPlayer(connUUID, conn)) // 从 sync.Map 获取玩家，如果不存在则创建
 
 	// 如果玩家是新创建的，则启动其协程

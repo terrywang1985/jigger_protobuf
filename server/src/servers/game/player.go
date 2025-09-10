@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
-	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -24,10 +23,11 @@ type DrawCardInfo struct {
 // Player 玩家结构体
 type Player struct {
 	// 连接信息
-	ConnUUID   string // 连接唯一标识
-	Uid        uint64 // 玩家唯一标识
-	OpenId     string // 平台唯一标识
-	Conn       net.Conn
+	ConnUUID string // 连接唯一标识
+	Uid      uint64 // 玩家唯一标识
+	OpenId   string // 平台唯一标识
+	//Conn       net.Conn
+	Conn       Connection       //同时支持tcp和websocket
 	RecvChan   chan *pb.Message // 玩家收消息管道
 	SendChan   chan *pb.Message // 玩家发消息管道
 	NotiChan   chan *pb.Message // 给玩家发送通知的管道
@@ -74,7 +74,8 @@ type UserData struct {
 // 全局 Redis 连接池
 
 // NewPlayer 创建玩家
-func NewPlayer(connUUID string, conn net.Conn) *Player {
+// func NewPlayer(connUUID string, conn net.Conn) *Player {
+func NewPlayer(connUUID string, conn Connection) *Player {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Player{
 		ConnUUID:     connUUID,

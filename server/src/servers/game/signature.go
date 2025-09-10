@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"net"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -16,7 +15,7 @@ import (
 var connCounter uint64
 
 // GenerateConnID 生成连接的唯一 ID
-func GenerateConnID(conn net.Conn) string {
+func GenerateConnID(conn Connection) string {
 	remoteAddr := conn.RemoteAddr().String() // 获取远程地址 (IP:Port)
 	connID := atomic.AddUint64(&connCounter, 1)
 	hash := md5.Sum([]byte(remoteAddr + strconv.FormatUint(connID, 10))) // 基于地址和计数生成哈希

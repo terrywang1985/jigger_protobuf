@@ -2,11 +2,9 @@ package main
 
 import (
 	cfg "cfg"
-	"common/db"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"google.golang.org/protobuf/proto"
 	"log/slog"
 	"math/rand"
@@ -322,23 +320,27 @@ func randomizeValue(base int32, variance float32) int32 {
 var idSeq uint64 = 99999
 
 func generateCardID() uint64 {
-	conn := db.Pool.Get()
-	defer conn.Close()
 
-	// 初始化键值为 99999（下次 INCR 会从 100000 开始）
-	_, err := conn.Do("SETNX", "global:card_inst_id", idSeq)
+	// 使用 SetNX 设置初始值（如果键不存在）
+	set, err := GlobalRedis.SetNX("global:card_inst_id", "99999")
 	if err != nil {
 		slog.Error("Failed to initialize card ID in Redis", "error", err)
+		return 0
+	}
+
+	if set {
+		slog.Info("Initialized card ID counter to 99999")
 	}
 
 	// 使用 INCR 获取递增的唯一值
-	cardID, err := redis.Uint64(conn.Do("INCR", "global:card_inst_id"))
+	cardID, err := GlobalRedis.Incr("global:card_inst_id")
 	if err != nil {
 		slog.Error("Failed to generate card ID using Redis", "error", err)
 		return 0
 	}
 
-	return cardID
+	return uint64(cardID)
+
 }
 
 // 错误定义
@@ -360,19 +362,4 @@ func (p *Player) HandleDrawCardRequest(msg *pb.Message) {
 
 	p.SendResponse(msg, mustMarshal(resp))
 
-}
-
-// 辅助函数：生成新的卡牌ID
-func generateNewCardId() uint64 {
-	conn := db.Pool.Get()
-	defer conn.Close()
-
-	// 获取全局自增UID计数器
-	card_id, err := redis.Int(conn.Do("INCR", "global:card_inst_id"))
-	if err != nil {
-		slog.Error("Failed to generate new card ID", "error", err)
-		return 0
-	}
-
-	return uint64(card_id)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"time"
 )
@@ -15,7 +16,7 @@ var (
 )
 
 // 处理新连接
-func handleConnection(conn net.Conn) {
+func handleConnection(conn Connection) {
 	connID := GenerateConnID(conn)
 	defer GlobalManager.DeletePlayer(connID)
 
@@ -64,21 +65,32 @@ func main() {
 	// 启动gRPC服务器
 	go service.StartGameGRPCService()
 
-	// 启动服务器
+	// 启动TCP服务器
+	go startTCPServer()
+
+	// 启动HTTP/WebSocket服务器
+	http.HandleFunc("/ws", handleWebSocket)
+	slog.Info("Starting WebSocket server", "port", 18080)
+	if err := http.ListenAndServe(":18080", nil); err != nil {
+		slog.Error("Failed to start HTTP server", "error", err)
+		os.Exit(1)
+	}
+}
+
+func startTCPServer() {
 	listener, err := net.Listen("tcp", ":12345")
 	if err != nil {
-		slog.Error("Failed to start server", "error", err)
+		slog.Error("Failed to start TCP server", "error", err)
+		return
 	}
 	defer listener.Close()
-	//fmt.Println("Server started at :12345")
 
-	// 其他代码直接调用slog的方法即可
-	slog.Info("Server started", "port", 12345)
+	slog.Info("TCP server started", "port", 12345)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			slog.Error("Failed to accept connection", "error", err)
+			slog.Error("Failed to accept TCP connection", "error", err)
 			continue
 		}
 		go handleConnection(conn)

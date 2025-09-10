@@ -495,6 +495,18 @@ func (rp *RedisPool) Keys(pattern string) ([]string, error) {
 	return keys, nil
 }
 
+// SetNX 设置键值，仅当键不存在时
+func (rp *RedisPool) SetNX(key, value string) (bool, error) {
+	conn := rp.pool.Get()
+	defer conn.Close()
+
+	result, err := redis.Int(conn.Do("SETNX", key, value))
+	if err != nil {
+		return false, fmt.Errorf("redis SETNX failed: %w", err)
+	}
+	return result == 1, nil
+}
+
 // 错误定义
 var (
 	ErrKeyNotFound = errors.New("key not found")
