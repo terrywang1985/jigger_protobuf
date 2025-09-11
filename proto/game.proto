@@ -28,16 +28,15 @@ message RoomDetail {
 
 // 客户端 -> 网关
 message AuthRequest {
-  uint64 uid = 1;               // 用户唯一标识
-  string token = 2;             // 登录服务器颁发的临时令牌
-  string protocol_version = 3;  // 协议版本
-  string client_version = 4;    // 客户端版本
-  string device_type = 5;       // 设备类型
-  string device_id = 6;         // 设备ID
-  string app_id = 7;            // 应用ID
-  string nonce = 8;             // 随机数（防重放）
-  int64 timestamp = 9;          // 请求时间戳
-  string signature = 10;        // 请求签名
+  string token = 1;             // 登录服务器颁发的临时令牌
+  string protocol_version = 2;  // 协议版本
+  string client_version = 3;    // 客户端版本
+  string device_type = 4;       // 设备类型
+  string device_id = 5;         // 设备ID
+  string app_id = 6;            // 应用ID
+  string nonce = 7;             // 随机数（防重放）
+  int64 timestamp = 8;          // 请求时间戳
+  string signature = 9;        // 请求签名
 }
 
 // 网关 -> 客户端

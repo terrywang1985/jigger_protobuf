@@ -66,9 +66,10 @@ type SessionData struct {
 
 // UserData 用户数据
 type UserData struct {
-	exp     int64
-	gold    int64
-	diamond int64
+	exp      int64
+	gold     int64
+	diamond  int64
+	nickname string
 }
 
 // 全局 Redis 连接池
@@ -300,14 +301,14 @@ func (p *Player) HandleAuthRequest(msg *pb.Message) {
 		return
 	}
 
-	// 验证协议版本
-	if req.GetProtocolVersion() != "1.0" {
-		p.sendAuthErrorResponse(msg, pb.ErrorCode_NOT_SUPPORTED, "Unsupported protocol version")
-		return
-	}
+	//// 验证协议版本
+	//if req.GetProtocolVersion() != "1.0" {
+	//	p.sendAuthErrorResponse(msg, pb.ErrorCode_NOT_SUPPORTED, "Unsupported protocol version")
+	//	return
+	//}
 
 	// 验证 session/token
-	isValid, sessionData, err := validateSession(req.GetToken(), req.GetUid())
+	isValid, sessionData, err := validateSession(req.GetToken())
 	if err != nil {
 		slog.Error("Session validation error", "error", err)
 		p.sendAuthErrorResponse(msg, pb.ErrorCode_SERVER_ERROR, "Internal server error")
@@ -315,16 +316,23 @@ func (p *Player) HandleAuthRequest(msg *pb.Message) {
 	}
 
 	if !isValid {
-		slog.Info("Invalid session/token", "uid", req.GetUid())
+		slog.Info("Invalid session/token", "token", req.GetToken())
 		p.sendAuthErrorResponse(msg, pb.ErrorCode_AUTH_FAILED, "Invalid token or session expired")
 		return
 	}
 
+	// 核心修改：使用 openid 查找或创建游戏内用户数据，并获取游戏内userid
+	gameUserData, gameUid, err := findOrCreateUserByOpenID(sessionData.OpenID, sessionData.Username)
+	if err != nil {
+		p.sendAuthErrorResponse(msg, pb.ErrorCode_SERVER_ERROR, "Failed to load user data")
+		return
+	}
+
 	// 设置玩家信息
-	p.Uid = req.GetUid()
+	p.Uid = gameUid
 	p.SessionID = req.GetToken()
 	p.Authenticated = true
-	p.Name = sessionData.Username
+	p.Name = gameUserData.nickname
 	p.OpenId = sessionData.OpenID
 
 	// 从Redis加载用户完整信息
@@ -374,15 +382,13 @@ func (p *Player) sendAuthSuccessResponse(srcMsg *pb.Message, userData *UserData)
 }
 
 // 辅助函数：生成新的用户ID
-func generateNewUserId() uint64 {
+func generateNewUserId() (uint64, error) {
 	// 获取全局自增UID计数器
-	newUid, err := GlobalRedis.Incr("global:user_uid")
+	uid, err := GlobalRedis.Incr("global:user_uid")
 	if err != nil {
-		slog.Error("Failed to generate new user ID", "error", err)
-		return 0
+		return 0, err
 	}
-
-	return uint64(newUid)
+	return uint64(uid), nil
 }
 
 func mustMarshal(pb proto.Message) []byte {
@@ -394,7 +400,7 @@ func mustMarshal(pb proto.Message) []byte {
 }
 
 // validateSession 验证session/token的有效性
-func validateSession(token string, uid uint64) (bool, *SessionData, error) {
+func validateSession(token string) (bool, *SessionData, error) {
 	// 从Redis中获取session信息
 	var sessionData SessionData
 	err := GlobalRedis.GetJSON("session:"+token, &sessionData)
@@ -403,11 +409,6 @@ func validateSession(token string, uid uint64) (bool, *SessionData, error) {
 			return false, nil, nil
 		}
 		return false, nil, err
-	}
-
-	// 检查session是否有效
-	if sessionData.UserID != uid {
-		return false, nil, nil
 	}
 
 	// 检查session是否过期
@@ -429,16 +430,67 @@ func loadUserDataFromRedis(uid uint64) (*UserData, error) {
 	exp, _ := strconv.ParseInt(values["exp"], 10, 64)
 	gold, _ := strconv.ParseInt(values["gold"], 10, 64)
 	diamond, _ := strconv.ParseInt(values["diamond"], 10, 64)
+	name, _ := values["nickname"]
 
 	return &UserData{
-		exp:     exp,
-		gold:    gold,
-		diamond: diamond,
+		exp:      exp,
+		gold:     gold,
+		diamond:  diamond,
+		nickname: name,
 	}, nil
+}
+
+func saveUserDataToRedis(uid uint64, userData *UserData) error {
+	fields := map[string]interface{}{
+		"exp":      userData.exp,
+		"gold":     userData.gold,
+		"diamond":  userData.diamond,
+		"nickname": userData.nickname,
+	}
+	return GlobalRedis.HMSet(fmt.Sprintf("user:%d", uid), fields)
 }
 
 // calculateLevel 根据经验值计算等级
 func calculateLevel(exp int64) int32 {
 	// 简单的等级计算公式，可根据需要调整
 	return int32(exp / 1000)
+}
+
+func findOrCreateUserByOpenID(openid string, username string) (*UserData, uint64, error) {
+	// 1. 尝试从Redis/Hash中根据openid查找是否已存在游戏用户
+	//    key: "openid_to_uid:" + openid, value: game_uid
+	existingUid, err := GlobalRedis.GetString("openid_to_uid:" + openid)
+	if err == nil && existingUid != "" {
+		// 用户已存在，直接返回uid和用户数据
+		uid, _ := strconv.ParseUint(existingUid, 10, 64)
+		userData, err := loadUserDataFromRedis(uid)
+		return userData, uid, err
+	}
+
+	// 2. 用户不存在，创建新用户
+	newUid, err := generateNewUserId() // 生成新的游戏内userid
+	if err != nil {
+		return nil, 0, err
+	}
+	// 建立 openid 到 game_uid 的映射关系
+	err = GlobalRedis.Set("openid_to_uid:"+openid, strconv.FormatUint(newUid, 10))
+	if err != nil {
+		return nil, 0, err
+	}
+	// 初始化用户数据
+	initialUserData := &UserData{
+		exp:      0,
+		gold:     100,           // 初始金币
+		diamond:  10,            // 初始钻石
+		nickname: "" + username, // 可以用平台用户名作为初始昵称
+		// ... 其他初始数据
+	}
+	// 保存初始用户数据到 Redis user:{newUid} 中
+	err = saveUserDataToRedis(newUid, initialUserData)
+	if err != nil {
+		return nil, 0, err
+	}
+	// 也可以选择在数据库里创建一条记录
+
+	return initialUserData, newUid, nil
 }

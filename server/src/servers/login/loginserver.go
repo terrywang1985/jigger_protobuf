@@ -25,7 +25,7 @@ type Config struct {
 	GatewayLBURL string `json:"gateway_lb_url"`
 }
 
-// 平台认证请求
+// 服务器向平台认证请求
 type PlatformAuthRequest struct {
 	Token string `json:"token"`
 	AppID string `json:"app_id"`
@@ -34,24 +34,22 @@ type PlatformAuthRequest struct {
 // 平台认证响应
 type PlatformAuthResponse struct {
 	Valid    bool   `json:"valid"`
-	UserID   uint64 `json:"user_id"`
 	Username string `json:"username"`
 	OpenID   string `json:"openid"` // 添加OpenID字段
 	Error    string `json:"error,omitempty"`
 }
 
-// 登录请求
+// 客户端登录请求
 type LoginRequest struct {
 	Token string `json:"token"` // 移除OpenID字段
 	AppID string `json:"app_id"`
 }
 
-// 登录响应
+// 客户端登录响应
 type LoginResponse struct {
 	Success    bool   `json:"success"`
 	GatewayURL string `json:"gateway_url,omitempty"`
 	SessionID  string `json:"session_id,omitempty"`
-	UserID     uint64 `json:"user_id,omitempty"`
 	Username   string `json:"username,omitempty"`
 	OpenID     string `json:"openid,omitempty"` // 添加OpenID到响应
 	Error      string `json:"error,omitempty"`
@@ -60,7 +58,6 @@ type LoginResponse struct {
 
 // Redis session 结构
 type SessionData struct {
-	UserID    uint64 `json:"user_id"`
 	OpenID    string `json:"openid"`
 	Username  string `json:"username"`
 	LoginTime int64  `json:"login_time"`
@@ -150,7 +147,6 @@ func (s *LoginServer) handleLogin(c *gin.Context) {
 	now := time.Now()
 	expiresAt := now.Add(24 * time.Hour)
 	sessionData := SessionData{
-		UserID:    userInfo.UserID,
 		OpenID:    userInfo.OpenID, // 使用从平台返回的OpenID
 		Username:  userInfo.Username,
 		LoginTime: now.Unix(),
@@ -172,7 +168,6 @@ func (s *LoginServer) handleLogin(c *gin.Context) {
 		Success:    true,
 		GatewayURL: s.config.GatewayLBURL,
 		SessionID:  sessionID,
-		UserID:     userInfo.UserID,
 		Username:   userInfo.Username,
 		OpenID:     userInfo.OpenID, // 返回OpenID给客户端
 		ExpiresIn:  86400,           // 24小时
