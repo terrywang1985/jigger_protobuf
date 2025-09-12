@@ -70,7 +70,7 @@ message SkinDataResponse {
 // 桌面宠物消息ID
 enum DesktopPetMessageId {
     // 基础消息ID范围
-    DESKTOP_PET_BASE = 1000;
+    DESKTOP_PET_BASE = 0;
     
     // 认证相关
     DESKTOP_PET_AUTH_REQUEST = 1001;

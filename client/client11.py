@@ -17,6 +17,12 @@ import uuid
 import base64
 from io import BytesIO
 import logging
+import struct
+
+# 导入protobuf生成的类
+import game_pb2 as game_pb
+import desktop_pet_pb2 as desktop_pet_pb
+import battle_pb2 as battle_pb
 
 # 平台API地址
 PLATFORM_API = "http://localhost:8080"
@@ -25,12 +31,81 @@ PLATFORM_API = "http://localhost:8080"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class ProtobufClient:
+    """Protobuf通信客户端"""
+    def __init__(self):
+        self.ws = None
+        self.msg_serial_no = 0
+        self.client_id = str(uuid.uuid4())
+        
+    def get_next_serial_no(self):
+        self.msg_serial_no += 1
+        return self.msg_serial_no
+    
+    def create_message(self, msg_id, data):
+        """创建protobuf消息"""
+        message = game_pb.Message()
+        message.clientId = self.client_id
+        message.msgSerialNo = self.get_next_serial_no()
+        message.id = msg_id
+        message.data = data
+        return message
+    
+    def pack_message(self, message):
+        """打包消息（4字节长度头 + protobuf数据）"""
+        data = message.SerializeToString()
+        length = struct.pack('<I', len(data))  # 小端序4字节长度
+        return length + data
+    
+    async def send_message(self, msg_id, proto_data):
+        """发送protobuf消息"""
+        if not self.ws:
+            return
+            
+        try:
+            # 序列化protobuf数据
+            data = proto_data.SerializeToString() if proto_data else b''
+            
+            # 创建消息
+            message = self.create_message(msg_id, data)
+            
+            # 打包并发送
+            packed_data = self.pack_message(message)
+            await self.ws.send(packed_data)
+            
+            print(f"Sent message: {msg_id}, data length: {len(data)}")
+            
+        except Exception as e:
+            print(f"Failed to send message: {e}")
+    
+    def unpack_message(self, data):
+        """解包消息"""
+        if len(data) < 4:
+            return None, data
+            
+        # 读取长度
+        length = struct.unpack('<I', data[:4])[0]
+        
+        # 检查是否有完整消息
+        if len(data) < 4 + length:
+            return None, data
+            
+        # 解析消息
+        message_data = data[4:4+length]
+        remaining_data = data[4+length:]
+        
+        try:
+            message = game_pb.Message()
+            message.ParseFromString(message_data)
+            return message, remaining_data
+        except Exception as e:
+            print(f"Failed to parse message: {e}")
+            return None, remaining_data
 class AuthManager:
     def __init__(self):
         self.token = None
         self.openid = None
         self.app_id = "desktop_app"
-    
     def send_sms_code(self, country_code, phone, device_id=""):
         url = f"{PLATFORM_API}/auth/phone/send-code"
         data = {
@@ -168,10 +243,24 @@ class DesktopPet:
     def send_chat(self, event=None):
         text = self.chat_entry.get()
         if text.strip() and self.ws:
-            asyncio.run_coroutine_threadsafe(self.ws.send(json.dumps({
-                "type":"chat","player_id":self.player_id,"text":text
-            })), asyncio.get_event_loop())
+            # 使用新的protobuf协议发送聊天消息
+            # 这里需要根据实际的聊天协议来调整
+            asyncio.run_coroutine_threadsafe(
+                self.send_chat_message(text),
+                asyncio.get_event_loop()
+            )
             self.chat_entry.delete(0, tk.END)
+    
+    async def send_chat_message(self, text):
+        """发送聊天消息（需要根据实际协议调整）"""
+        # 这里需要根据实际的聊天协议来实现
+        # 暂时使用简单的JSON格式作为过渡
+        chat_data = json.dumps({
+            "type": "chat",
+            "player_id": self.player_id,
+            "text": text
+        })
+        await self.ws.send(chat_data)
 
     def animate(self):
         now = time.time()
@@ -213,9 +302,20 @@ class DesktopPet:
     def trigger_action(self):
         self.events.append(time.time())
         if self.ws:
-            asyncio.run_coroutine_threadsafe(self.ws.send(json.dumps({
-                "type":"action","player_id":self.player_id
-            })), asyncio.get_event_loop())
+            # 使用新的protobuf协议发送动作消息
+            asyncio.run_coroutine_threadsafe(
+                self.send_action_message(),
+                asyncio.get_event_loop()
+            )
+    
+    async def send_action_message(self):
+        """发送动作消息（需要根据实际协议调整）"""
+        # 暂时使用简单的JSON格式作为过渡
+        action_data = json.dumps({
+            "type": "action",
+            "player_id": self.player_id
+        })
+        await self.ws.send(action_data)
 
     def receive_action(self):
         self.events.append(time.time())
@@ -391,6 +491,8 @@ class HomePage:
             messagebox.showerror("错误", "未连接到服务器")
             return
         
+        # 这里需要根据实际的desktop_pet协议来实现
+        # 暂时使用JSON格式作为过渡
         message = {
             "type": "get_market"
         }
@@ -791,6 +893,8 @@ class JiggerClient:
         self.event_queue = queue.Queue()
         self.auth = AuthManager()
         self.current_skin = None
+        self.protobuf_client = ProtobufClient()  # 添加Protobuf客户端
+        self.message_buffer = b''  # 消息缓冲区
 
         self.root = tk.Tk()
         self.root.withdraw()
@@ -829,36 +933,16 @@ class JiggerClient:
         asyncio.run(self.ws_main())
 
     async def ws_main(self):
-        uri = "ws://127.0.0.1:8765"
+        uri = "ws://127.0.0.1:18080/ws"  # 使用正确的WebSocket地址
         try:
-            self.ws = await asyncio.wait_for(websockets.connect(uri), timeout=1)
+            self.ws = await asyncio.wait_for(websockets.connect(uri), timeout=5)
+            self.protobuf_client.ws = self.ws  # 设置protobuf客户端的websocket连接
             self.online = True
             print("联网模式")
             
-            auth_msg = {
-                "type": "auth",
-                "token": self.auth.token,
-                "openid": self.auth.openid,
-                "room": "room1"
-            }
-            await self.ws.send(json.dumps(auth_msg))
+            # 发送认证请求
+            await self.send_auth_request()
             
-            response = await asyncio.wait_for(self.ws.recv(), timeout=5)
-            auth_result = json.loads(response)
-            
-            if auth_result.get("type") == "auth_success":
-                print("服务器认证成功")
-                await self.ws.send(json.dumps({"type":"join","room":"room1","password":None}))
-                
-                await self.ws.send(json.dumps({"type": "get_backpack"}))
-                
-                await self.ws.send(json.dumps({"type": "get_equipped_skin"}))
-            else:
-                print("服务器认证失败:", auth_result.get("reason", "未知错误"))
-                self.online = False
-                await self.ws.close()
-                return
-                
         except Exception as e:
             self.ws = None
             self.online = False
@@ -872,31 +956,112 @@ class JiggerClient:
             except Exception as e:
                 self.online = False
                 print(f"断开连接: {str(e)}，切换单机模式")
+                
+    async def send_auth_request(self):
+        """发送认证请求"""
+        if not self.auth.token:
+            print("未登录，无法认证")
+            return
+            
+        # 创建认证请求
+        auth_request = game_pb.AuthRequest()
+        auth_request.token = self.auth.token
+        auth_request.protocol_version = "1.0"
+        auth_request.client_version = "1.0.0"
+        auth_request.device_type = "desktop"
+        auth_request.device_id = str(uuid.uuid4())[:8]
+        auth_request.app_id = self.auth.app_id
+        auth_request.nonce = str(uuid.uuid4())
+        auth_request.timestamp = int(time.time() * 1000)
+        auth_request.signature = ""  # 简化处理，不计算签名
+        
+        # 发送认证请求
+        await self.protobuf_client.send_message(game_pb.MessageId.AUTH_REQUEST, auth_request)
 
     async def handle_websocket_message(self, msg):
+        """处理WebSocket消息（二进制protobuf数据）"""
         try:
-            event = json.loads(msg)
-            msg_type = event.get("type")
+            # 将收到的数据添加到缓冲区
+            if isinstance(msg, bytes):
+                self.message_buffer += msg
+            else:
+                # 如果收到的是文本消息，转为字节
+                self.message_buffer += msg.encode('utf-8')
             
-            if msg_type in ["action", "chat"]:
-                self.event_queue.put(event)
-            elif msg_type == "backpack_info":
-                self.handle_backpack_info(event)
-            elif msg_type == "market_info":
-                self.handle_market_info(event)
-            elif msg_type == "purchase_success":
-                self.handle_purchase_success(event)
-            elif msg_type == "equip_success":
-                self.handle_equip_success(event)
-            elif msg_type == "skin_data":
-                self.handle_skin_data(event)
-            elif msg_type == "error":
-                self.handle_error(event)
+            # 处理缓冲区中的所有完整消息
+            while True:
+                message, self.message_buffer = self.protobuf_client.unpack_message(self.message_buffer)
+                if message is None:
+                    break  # 没有完整消息
+                    
+                await self.handle_protobuf_message(message)
                 
         except Exception as e:
             print(f"处理WebSocket消息错误: {e}")
+    async def handle_protobuf_message(self, message):
+        """处理protobuf消息"""
+        try:
+            msg_id = message.id
+            print(f"Received message ID: {msg_id}")
+            
+            if msg_id == game_pb.MessageId.AUTH_RESPONSE:
+                await self.handle_auth_response(message)
+            elif msg_id == game_pb.MessageId.GET_USER_INFO_RESPONSE:
+                await self.handle_user_info_response(message)
+            # 可以添加更多消息处理
+            else:
+                print(f"Unhandled message type: {msg_id}")
+                
+        except Exception as e:
+            print(f"处理protobuf消息错误: {e}")
     
+    async def handle_auth_response(self, message):
+        """处理认证响应"""
+        try:
+            auth_response = game_pb.AuthResponse()
+            auth_response.ParseFromString(message.data)
+            
+            if auth_response.ret == game_pb.ErrorCode.OK:
+                print(f"认证成功! UID: {auth_response.uid}, 昵称: {auth_response.nickname}")
+                print(f"金币: {auth_response.gold}, 钻石: {auth_response.diamond}")
+                
+                # 认证成功后可以发送其他请求
+                await self.request_user_info(auth_response.uid)
+            else:
+                print(f"认证失败: {auth_response.error_msg}")
+                self.online = False
+                await self.ws.close()
+                
+        except Exception as e:
+            print(f"处理认证响应错误: {e}")
+    
+    async def handle_user_info_response(self, message):
+        """处理用户信息响应"""
+        try:
+            user_info_response = game_pb.GetUserInfoResponse()
+            user_info_response.ParseFromString(message.data)
+            
+            if user_info_response.ret == game_pb.ErrorCode.OK:
+                user_info = user_info_response.user_info
+                print(f"用户信息: {user_info.name}, 等级: {user_info.exp}, 金币: {user_info.gold}")
+                # 更新界面显示
+            else:
+                print("获取用户信息失败")
+                
+        except Exception as e:
+            print(f"处理用户信息响应错误: {e}")
+    
+    async def request_user_info(self, uid):
+        """请求用户信息"""
+        user_info_request = game_pb.GetUserInfoRequest()
+        user_info_request.uid = uid
+        
+        await self.protobuf_client.send_message(
+            game_pb.MessageId.GET_USER_INFO_REQUEST, 
+            user_info_request
+        )
     def handle_backpack_info(self, event):
+        """暂时保留兼容性处理"""
         items = event.get("items", [])
         if hasattr(self, 'home_page') and self.home_page:
             self.home_page.backpack_items = items

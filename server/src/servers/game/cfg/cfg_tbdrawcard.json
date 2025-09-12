@@ -1,0 +1,110 @@
+[
+  {
+    "rarity_level": 1,
+    "rarity": {
+      "prefix": "r",
+      "weight": 60,
+      "min_number": 1,
+      "max_number": 22
+    },
+    "base_stats": {
+      "max_level": 50,
+      "attack": {
+        "base": 80,
+        "variance": 0.1
+      },
+      "attack_speed": 100,
+      "attack_range": 2,
+      "mp": 300,
+      "mp_cost": 20,
+      "mp_regen": 5,
+      "defense": {
+        "base": 15,
+        "variance": 0.1
+      },
+      "hp": 1500,
+      "hp_regen": 10,
+      "move_speed": 350,
+      "spell_class": 1
+    },
+    "growth": {
+      "attack_per_level": 2,
+      "hp_per_level": 50,
+      "defense_per_level": 1,
+      "mp_per_level": 20,
+      "coefficient": 10
+    }
+  },
+  {
+    "rarity_level": 2,
+    "rarity": {
+      "prefix": "sr",
+      "weight": 30,
+      "min_number": 1,
+      "max_number": 8
+    },
+    "base_stats": {
+      "max_level": 60,
+      "attack": {
+        "base": 150,
+        "variance": 0.1
+      },
+      "attack_speed": 120,
+      "attack_range": 4,
+      "mp": 500,
+      "mp_cost": 35,
+      "mp_regen": 8,
+      "defense": {
+        "base": 25,
+        "variance": 0.1
+      },
+      "hp": 2500,
+      "hp_regen": 15,
+      "move_speed": 380,
+      "spell_class": 2
+    },
+    "growth": {
+      "attack_per_level": 4,
+      "hp_per_level": 80,
+      "defense_per_level": 2,
+      "mp_per_level": 30,
+      "coefficient": 15
+    }
+  },
+  {
+    "rarity_level": 3,
+    "rarity": {
+      "prefix": "ssr",
+      "weight": 10,
+      "min_number": 1,
+      "max_number": 5
+    },
+    "base_stats": {
+      "max_level": 70,
+      "attack": {
+        "base": 300,
+        "variance": 0.05
+      },
+      "attack_speed": 150,
+      "attack_range": 6,
+      "mp": 800,
+      "mp_cost": 50,
+      "mp_regen": 12,
+      "defense": {
+        "base": 40,
+        "variance": 0.05
+      },
+      "hp": 4000,
+      "hp_regen": 20,
+      "move_speed": 400,
+      "spell_class": 3
+    },
+    "growth": {
+      "attack_per_level": 6,
+      "hp_per_level": 120,
+      "defense_per_level": 3,
+      "mp_per_level": 50,
+      "coefficient": 20
+    }
+  }
+]
