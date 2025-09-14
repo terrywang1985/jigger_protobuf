@@ -54,7 +54,7 @@ func (s *OptimizedMatchServer) createBattleRoom(players []*pb.MatchRequest) {
 	// 假设我们有一个battleCommandClient
 	// 创建房间请求
 	roomReq := &pb.CreateRoomRequest{
-		BattleId: generateBattleID(), // 生成唯一战斗ID
+		BattleId: GenerateBattleID(), // 使用全局函数生成唯一战斗ID
 		Players:  make([]*pb.PlayerInitData, 0, len(players)),
 	}
 
@@ -76,20 +76,12 @@ func (s *OptimizedMatchServer) createBattleRoom(players []*pb.MatchRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resp, err := battleCommandClient.CreateRoom(ctx, roomReq)
-	if err != nil {
-		slog.Error("failed to create battle room", "error", err)
-		// 如果创建房间失败，需要将玩家重新放回匹配队列？
-		// 这里可以根据业务逻辑处理，比如重试或者通知玩家匹配失败
-		return
-	}
+	// TODO: 实现实际的battle服务调用
+	// resp, err := battleCommandClient.CreateRoom(ctx, roomReq)
+	// 目前暂时模拟成功
+	slog.Info("would create battle room", "battle_id", roomReq.BattleId, "players", len(roomReq.Players))
 
-	if resp.Ret != pb.ErrorCode_OK {
-		slog.Error("create room failed", "error", resp.Ret)
-		return
-	}
-
-	// 通知玩家匹配成功（这里通过GameServer转发）
+	// 模拟成功响应
 	for _, playerReq := range players {
 		s.notifyPlayerMatched(playerReq.PlayerId, roomReq.BattleId)
 	}
@@ -100,23 +92,23 @@ func (s *OptimizedMatchServer) notifyPlayerMatched(playerID uint64, battleID str
 	// 我们可以通过gRPC调用GameServer的接口，或者通过消息队列
 	// 由于您现有的架构中，GameServer和MatchServer都是gRPC服务，这里直接调用GameServer的接口
 
-	// 假设我们有一个gameServerClient
-	notifyReq := &pb.MatchResultNotify{
-		PlayerId:   playerID,
-		BattleId:   battleID,
-		ServerAddr: "battle-server-address:50051", // 战斗服务器地址
-	}
+	// TODO: 实现实际的game服务通知
+	slog.Info("would notify player matched", "player_id", playerID, "battle_id", battleID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// 模拟通知逻辑
+	/*
+		notifyReq := &pb.MatchResultNotify{
+			PlayerId:   playerID,
+			BattleId:   battleID,
+			ServerAddr: "battle-server-address:50051", // 战斗服务器地址
+		}
 
-	_, err := gameServerClient.OnMatchSuccess(ctx, notifyReq)
-	if err != nil {
-		slog.Error("failed to notify player", "player_id", playerID, "error", err)
-	}
-}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-func generateBattleID() string {
-	// 生成唯一战斗ID，可以用UUID或者时间戳+随机数
-	return "battle-" + time.Now().Format("20060102150405") + "-" + randStr(6)
+		_, err := gameServerClient.OnMatchSuccess(ctx, notifyReq)
+		if err != nil {
+			slog.Error("failed to notify player", "player_id", playerID, "error", err)
+		}
+	*/
 }

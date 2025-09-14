@@ -23,6 +23,10 @@ func main() {
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
 	}
+	
+	// 初始化全局Redis池
+	initGlobalRedisPool(redisAddr)
+	
 	matchServer := NewOptimizedMatchServer(redisAddr)
 
 	// 启动gRPC服务器

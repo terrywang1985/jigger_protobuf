@@ -1,0 +1,52 @@
+# 统一的多服务 Dockerfile
+# 支持通过参数启动不同的服务: login, game, battle
+
+# 基础构建镜像
+FROM golang:1.23-alpine AS builder
+
+# 安装必要的工具
+RUN apk add --no-cache git
+
+# 设置Go代理加速
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制源代码
+COPY server/src/ ./src/
+COPY server/cfg/ ./cfg/
+
+# 创建bin目录
+RUN mkdir -p bin
+
+# 手动构建各个服务器
+RUN cd src/servers/game && go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o ../../../bin/game-server .
+RUN cd src/servers/battle && go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o ../../../bin/battle-server .
+RUN cd src/servers/login && go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o ../../../bin/login-server ./loginserver.go
+
+# 运行时镜像
+FROM alpine:latest
+
+# 安装ca证书和curl（用于健康检查）
+RUN apk --no-cache add ca-certificates curl bash
+
+WORKDIR /app
+
+# 从构建镜像复制二进制文件和配置
+COPY --from=builder /app/bin/ ./bin/
+COPY --from=builder /app/cfg/ ./cfg/
+
+# 复制启动脚本
+COPY server/start.sh ./
+COPY server/stop.sh ./
+
+# 设置执行权限
+RUN chmod +x start.sh stop.sh bin/*
+
+# 暴露所有可能的端口
+EXPOSE 8081 18080 12345 50051 50053
+
+# 默认启动所有服务，可通过参数覆盖
+CMD ["./start.sh", "all"]

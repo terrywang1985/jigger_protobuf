@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Redis 服务
+  redis:
+    image: redis:7-alpine
+    container_name: jigger-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - jigger-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # 登录服务
+  login-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.unified
+    container_name: jigger-login-server
+    command: ["./start.sh", "login"]
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - PLATFORM_API=http://host.docker.internal:8080/auth/check-token
+      - SHARED_INTERNAL_TOKEN=default_internal_token_change_in_production
+      - PORT=8081
+    networks:
+      - jigger-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 游戏主服务
+  game-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.unified
+    container_name: jigger-game-server
+    command: ["./start.sh", "game"]
+    ports:
+      - "18080:18080"  # WebSocket
+      - "12345:12345"  # TCP
+      - "50051:50051"  # gRPC
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - PLATFORM_BASE_URL=http://host.docker.internal:8080
+      - PLATFORM_INTERNAL_TOKEN=default_internal_token_change_in_production
+      - PLATFORM_APP_ID=jigger_game
+    networks:
+      - jigger-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18080/health || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 战斗服务
+  battle-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.unified
+    container_name: jigger-battle-server
+    command: ["./start.sh", "battle"]
+    ports:
+      - "50053:50053"  # gRPC
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - GRPC_PORT=50053
+    networks:
+      - jigger-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 匹配服务 - 暂时注释掉
+  # match-server:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.unified
+  #   container_name: jigger-match-server
+  #   command: ["./start.sh", "match"]
+  #   ports:
+  #     - "50052:50052"  # gRPC
+  #   environment:
+  #     - REDIS_ADDR=redis:6379
+  #     - REDIS_PASSWORD=
+  #     - REDIS_DB=0
+  #     - GRPC_PORT=50052
+  #   networks:
+  #     - jigger-network
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  jigger-network:
+    driver: bridge

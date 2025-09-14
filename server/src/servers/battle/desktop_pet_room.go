@@ -4,17 +4,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
-)
 
-// desktop_pet_room.go
-package main
-
-import (
-"log/slog"
-"sync"
-"time"
-
-pb "proto"
+	pb "proto"
 )
 
 // DesktopPetRoom 桌面宠物房间

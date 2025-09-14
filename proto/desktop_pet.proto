@@ -67,6 +67,23 @@ message SkinDataResponse {
     bytes skin_data = 3; // 加密的皮肤数据
 }
 
+// 桌面宠物玩家状态
+message DesktopPetPlayerState {
+    uint64 player_id = 1;
+    string player_name = 2;
+    string pet_skin = 3;
+    float position_x = 4;
+    float position_y = 5;
+    string action = 6;
+    string chat_text = 7;
+}
+
+// 桌面宠物房间状态
+message DesktopPetRoomState {
+    string room_id = 1;
+    repeated DesktopPetPlayerState players = 2;
+}
+
 // 桌面宠物消息ID
 enum DesktopPetMessageId {
     // 基础消息ID范围

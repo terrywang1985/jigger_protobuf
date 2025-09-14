@@ -51,7 +51,8 @@ func main() {
 	slog.SetDefault(logger) // 设为全局默认Logger
 
 	// 初始化Redis连接池
-	GlobalRedis = redisutil.NewRedisPool("localhost:6379", "", 0)
+	redisConfig := redisutil.LoadRedisConfigFromEnv()
+	GlobalRedis = redisutil.NewRedisPoolFromConfig(redisConfig)
 
 	// 测试Redis连接
 	if err := testRedisConnection(); err != nil {

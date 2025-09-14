@@ -4,12 +4,43 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"google.golang.org/protobuf/proto"
 )
+
+// RedisConfig Redis连接配置
+type RedisConfig struct {
+	Addr     string // Redis地址
+	Password string // Redis密码
+	DB       int    // Redis数据库
+}
+
+// LoadRedisConfigFromEnv 从环境变量加载Redis配置
+func LoadRedisConfigFromEnv() *RedisConfig {
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
+	redisPass := os.Getenv("REDIS_PASSWORD")
+
+	redisDB := 0
+	if dbStr := os.Getenv("REDIS_DB"); dbStr != "" {
+		if db, err := strconv.Atoi(dbStr); err == nil {
+			redisDB = db
+		}
+	}
+
+	return &RedisConfig{
+		Addr:     redisAddr,
+		Password: redisPass,
+		DB:       redisDB,
+	}
+}
 
 // RedisPool 封装了Redis连接池和常用方法
 type RedisPool struct {
@@ -49,6 +80,11 @@ func NewRedisPool(server, password string, db int) *RedisPool {
 			},
 		},
 	}
+}
+
+// NewRedisPoolFromConfig 从配置创建新的Redis连接池
+func NewRedisPoolFromConfig(config *RedisConfig) *RedisPool {
+	return NewRedisPool(config.Addr, config.Password, config.DB)
 }
 
 // Close 关闭连接池

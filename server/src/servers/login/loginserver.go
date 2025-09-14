@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -73,18 +74,30 @@ type LoginServer struct {
 }
 
 func main() {
-	// 加载配置
+	// 从环境变量加载配置
+	redisConfig := redisutil.LoadRedisConfigFromEnv()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8081"
+	}
+
+	platformAPI := os.Getenv("PLATFORM_API")
+	if platformAPI == "" {
+		platformAPI = "http://localhost:8080/auth/check-token"
+	}
+
 	config := &Config{
-		Port:         "8081",
-		RedisAddr:    "localhost:6379",
-		RedisPass:    "",
-		RedisDB:      0,
-		PlatformAPI:  "http://localhost:8080/auth/check-token", // 修正为连字符
+		Port:         port,
+		RedisAddr:    redisConfig.Addr,
+		RedisPass:    redisConfig.Password,
+		RedisDB:      redisConfig.DB,
+		PlatformAPI:  platformAPI,
 		GatewayLBURL: "gateway.example.com:9000",
 	}
 
 	// 初始化Redis连接池
-	redisPool := redisutil.NewRedisPool(config.RedisAddr, config.RedisPass, config.RedisDB)
+	redisPool := redisutil.NewRedisPoolFromConfig(redisConfig)
 
 	// 测试Redis连接
 	if err := testRedisConnection(redisPool); err != nil {
@@ -197,6 +210,12 @@ func (s *LoginServer) validatePlatformToken(token, appid string) (*PlatformAuthR
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	
+	// 添加内部认证头部（用于访问platform的内部API）
+	internalToken := os.Getenv("SHARED_INTERNAL_TOKEN")
+	if internalToken != "" {
+		req.Header.Set("X-Internal-Auth", internalToken)
+	}
 
 	// 发送请求
 	resp, err := client.Do(req)

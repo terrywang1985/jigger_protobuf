@@ -6,7 +6,6 @@ import (
 	"common/rpc"
 	"context"
 	"fmt"
-	"google.golang.org/grpc"
 	"log/slog"
 	"net"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 // BattleServer 结构体
@@ -37,8 +38,9 @@ func main() {
 	slog.SetDefault(logger)
 	slog.Info("Starting Battle Server...")
 
-	// 初始化Redis连接池 (假设已在db包中初始化)
-	redisPool := redisutil.NewRedisPool("127.0.0.1:6379", "", 0)
+	// 初始化Redis连接池
+	redisConfig := redisutil.LoadRedisConfigFromEnv()
+	redisPool := redisutil.NewRedisPoolFromConfig(redisConfig)
 	defer redisPool.Close()
 
 	// 创建BattleServer实例

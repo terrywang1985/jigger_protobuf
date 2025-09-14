@@ -1,0 +1,39 @@
+# 基础构建镜像
+FROM golang:1.23-alpine AS builder
+
+# 安装必要的工具
+RUN apk add --no-cache git
+
+# 设置Go代理加速
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制源代码
+COPY server/src/ ./src/
+COPY server/cfg/ ./cfg/
+
+# 构建应用
+WORKDIR /app/src/servers/battle
+RUN go mod tidy
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ../../../bin/battle-server .
+
+# 运行时镜像
+FROM alpine:latest
+
+# 安装ca证书
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+
+# 从构建镜像复制二进制文件和配置
+COPY --from=builder /app/bin/battle-server ./bin/
+COPY --from=builder /app/cfg/ ./cfg/
+
+# 暴露端口
+EXPOSE 50053
+
+# 运行应用
+CMD ["./bin/battle-server"]
