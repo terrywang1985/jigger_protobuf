@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/protobuf/proto"
 	pb "proto"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // DrawCardInfo 抽卡信息
@@ -292,7 +293,7 @@ func (p *Player) SendResponse(srcMsg *pb.Message, responseData []byte) {
 	p.SendMessage(response)
 }
 
-// HandleAuthRequest 处理认证请求
+// HandleAuthRequest 处理认证请求（统一流程：游客和正常用户都有token）
 func (p *Player) HandleAuthRequest(msg *pb.Message) {
 	var req pb.AuthRequest
 	if err := proto.Unmarshal(msg.GetData(), &req); err != nil {
@@ -301,13 +302,13 @@ func (p *Player) HandleAuthRequest(msg *pb.Message) {
 		return
 	}
 
-	//// 验证协议版本
-	//if req.GetProtocolVersion() != "1.0" {
-	//	p.sendAuthErrorResponse(msg, pb.ErrorCode_NOT_SUPPORTED, "Unsupported protocol version")
-	//	return
-	//}
+	// 统一验证token（游客和正常用户都必须有token）
+	if req.GetToken() == "" {
+		p.sendAuthErrorResponse(msg, pb.ErrorCode_INVALID_PARAM, "Token is required")
+		return
+	}
 
-	// 验证 session/token
+	// 验证session/token
 	isValid, sessionData, err := validateSession(req.GetToken())
 	if err != nil {
 		slog.Error("Session validation error", "error", err)
@@ -321,8 +322,15 @@ func (p *Player) HandleAuthRequest(msg *pb.Message) {
 		return
 	}
 
-	// 核心修改：使用 openid 查找或创建游戏内用户数据，并获取游戏内userid
-	gameUserData, gameUid, err := findOrCreateUserByOpenID(sessionData.OpenID, sessionData.Username)
+	// 根据is_guest字段或者session中的openid判断是否为游客
+	isGuest := req.GetIsGuest() || (len(sessionData.OpenID) >= 6 && sessionData.OpenID[:6] == "guest_")
+
+	// 统一处理流程：使用 openid 查找或创建游戏内用户数据
+	var gameUserData *UserData
+	var gameUid uint64
+	// 统一使用一个函数处理所有用户类型（游客和正常用户）
+	gameUserData, gameUid, err = findOrCreateUserByOpenID(sessionData.OpenID, sessionData.Username)
+
 	if err != nil {
 		p.sendAuthErrorResponse(msg, pb.ErrorCode_SERVER_ERROR, "Failed to load user data")
 		return
@@ -350,8 +358,10 @@ func (p *Player) HandleAuthRequest(msg *pb.Message) {
 	// 加入到manager里面
 	GlobalManager.OnPlayerUinSet(p.ConnUUID)
 
+	slog.Info("User authenticated", "uid", gameUid, "openid", sessionData.OpenID, "is_guest", isGuest)
+
 	// 返回认证成功响应
-	p.sendAuthSuccessResponse(msg, userData)
+	p.sendAuthSuccessResponse(msg, userData, isGuest)
 }
 
 // 辅助函数：发送认证错误响应
@@ -365,7 +375,7 @@ func (p *Player) sendAuthErrorResponse(srcMsg *pb.Message, errorCode pb.ErrorCod
 }
 
 // 辅助函数：发送认证成功响应
-func (p *Player) sendAuthSuccessResponse(srcMsg *pb.Message, userData *UserData) {
+func (p *Player) sendAuthSuccessResponse(srcMsg *pb.Message, userData *UserData, isGuest bool) {
 	response := &pb.AuthResponse{
 		Ret:           pb.ErrorCode_OK,
 		Uid:           p.Uid,
@@ -377,6 +387,7 @@ func (p *Player) sendAuthSuccessResponse(srcMsg *pb.Message, userData *UserData)
 		Exp:           p.Exp,
 		Gold:          p.Gold,
 		Diamond:       p.Diamond,
+		IsGuest:       isGuest, // TODO: 等protobuf重新生成后开启
 	}
 	p.SendResponse(srcMsg, mustMarshal(response))
 }
@@ -456,9 +467,9 @@ func calculateLevel(exp int64) int32 {
 	return int32(exp / 1000)
 }
 
+// findOrCreateUserByOpenID 根据openid查找或创建用户（统一函数，支持正常用户和游客）
 func findOrCreateUserByOpenID(openid string, username string) (*UserData, uint64, error) {
-	// 1. 尝试从Redis/Hash中根据openid查找是否已存在游戏用户
-	//    key: "openid_to_uid:" + openid, value: game_uid
+	// 1. 尝试从Redis中根据openid查找是否已存在游戏用户
 	existingUid, err := GlobalRedis.GetString("openid_to_uid:" + openid)
 	if err == nil && existingUid != "" {
 		// 用户已存在，直接返回uid和用户数据
@@ -468,29 +479,46 @@ func findOrCreateUserByOpenID(openid string, username string) (*UserData, uint64
 	}
 
 	// 2. 用户不存在，创建新用户
-	newUid, err := generateNewUserId() // 生成新的游戏内userid
+	newUid, err := generateNewUserId()
 	if err != nil {
 		return nil, 0, err
 	}
+
 	// 建立 openid 到 game_uid 的映射关系
 	err = GlobalRedis.Set("openid_to_uid:"+openid, strconv.FormatUint(newUid, 10))
 	if err != nil {
 		return nil, 0, err
 	}
-	// 初始化用户数据
+
+	// 判断是否为游客（根据openid前缀）
+	isGuest := len(openid) >= 6 && openid[:6] == "guest_"
+
+	// 初始化用户数据（游客和正常用户可以有不同的初始资源）
 	initialUserData := &UserData{
 		exp:      0,
-		gold:     100,           // 初始金币
-		diamond:  10,            // 初始钻石
-		nickname: "" + username, // 可以用平台用户名作为初始昵称
-		// ... 其他初始数据
+		gold:     100, // 初始金币
+		diamond:  10,  // 初始钻石
+		nickname: username,
 	}
-	// 保存初始用户数据到 Redis user:{newUid} 中
+
+	// 游客可以给更少的初始资源（如果需要区别对待）
+	if isGuest {
+		// 可以在这里调整游客的初始资源
+		// initialUserData.gold = 50  // 游客给更少金币
+		// initialUserData.diamond = 5 // 游客给更少钻石
+	}
+
+	// 保存初始用户数据到 Redis
 	err = saveUserDataToRedis(newUid, initialUserData)
 	if err != nil {
 		return nil, 0, err
 	}
-	// 也可以选择在数据库里创建一条记录
+
+	userType := "normal"
+	if isGuest {
+		userType = "guest"
+	}
+	slog.Info("Created new user", "type", userType, "openid", openid, "username", username, "uid", newUid)
 
 	return initialUserData, newUid, nil
 }

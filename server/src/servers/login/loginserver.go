@@ -42,8 +42,10 @@ type PlatformAuthResponse struct {
 
 // 客户端登录请求
 type LoginRequest struct {
-	Token string `json:"token"` // 移除OpenID字段
-	AppID string `json:"app_id"`
+	Token    string `json:"token"` // 移除OpenID字段
+	AppID    string `json:"app_id"`
+	IsGuest  bool   `json:"is_guest"`  // 是否为游客登录
+	DeviceID string `json:"device_id"` // 设备ID（游客登录需要）
 }
 
 // 客户端登录响应
@@ -112,7 +114,7 @@ func main() {
 	}
 
 	// 设置路由
-	server.router.POST("/login", server.handleLogin)
+	server.router.POST("/login", server.handleLogin) // 统一登录接口，支持普通用户和游客
 	server.router.GET("/health", server.handleHealthCheck)
 
 	// 启动服务器
@@ -132,7 +134,7 @@ func testRedisConnection(redis *redisutil.RedisPool) error {
 	return nil
 }
 
-// 处理登录请求
+// 处理登录请求（统一接口，支持普通用户和游客）
 func (s *LoginServer) handleLogin(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -143,6 +145,19 @@ func (s *LoginServer) handleLogin(c *gin.Context) {
 		return
 	}
 
+	// 根据 is_guest 参数判断登录类型
+	if req.IsGuest {
+		// 游客登录流程
+		s.processGuestLogin(c, req)
+		return
+	}
+
+	// 普通用户登录流程
+	s.processNormalLogin(c, req)
+}
+
+// 处理普通用户登录逻辑
+func (s *LoginServer) processNormalLogin(c *gin.Context, req LoginRequest) {
 	// 验证平台token
 	userInfo, err := s.validatePlatformToken(req.Token, req.AppID)
 	if err != nil || userInfo == nil || !userInfo.Valid {
@@ -186,8 +201,6 @@ func (s *LoginServer) handleLogin(c *gin.Context) {
 		ExpiresIn:  86400,           // 24小时
 	})
 }
-
-// 验证平台token
 func (s *LoginServer) validatePlatformToken(token, appid string) (*PlatformAuthResponse, error) {
 	// 创建HTTP客户端
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -210,7 +223,7 @@ func (s *LoginServer) validatePlatformToken(token, appid string) (*PlatformAuthR
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// 添加内部认证头部（用于访问platform的内部API）
 	internalToken := os.Getenv("SHARED_INTERNAL_TOKEN")
 	if internalToken != "" {
@@ -284,4 +297,59 @@ func (s *LoginServer) shutdown() {
 	}
 
 	log.Println("LoginServer shutdown complete")
+}
+
+
+
+// 处理游客登录逻辑（修改：返回游客认证信息，而不是session token）
+func (s *LoginServer) processGuestLogin(c *gin.Context, req LoginRequest) {
+	// 验证设备ID
+	if req.DeviceID == "" {
+		c.JSON(http.StatusBadRequest, LoginResponse{
+			Success: false,
+			Error:   "Device ID is required for guest login",
+		})
+		return
+	}
+
+	// 直接在本地创建游客身份，不与平台交互
+	guestOpenID := "guest_" + req.DeviceID
+	guestUsername := "guest_" + req.DeviceID
+
+	// 生成session ID用于保持流程通用
+	sessionID := uuid.New().String()
+
+	// 创建游客session数据
+	now := time.Now()
+	expiresAt := now.Add(24 * time.Hour)
+	sessionData := SessionData{
+		OpenID:    guestOpenID,
+		Username:  guestUsername,
+		LoginTime: now.Unix(),
+		ExpiresAt: expiresAt.Unix(),
+		AppID:     req.AppID,
+	}
+
+	// 存储session到Redis
+	if err := s.storeSession(sessionID, sessionData); err != nil {
+		c.JSON(http.StatusInternalServerError, LoginResponse{
+			Success: false,
+			Error:   "Failed to create session: " + err.Error(),
+		})
+		return
+	}
+
+	// 可以在这里做一些游客登录的控制逻辑
+	// 比如：分配较少的资源、设置不同的限制等
+	log.Printf("Guest login for device: %s, allocated resources: limited", req.DeviceID)
+
+	// 返回游客认证信息（现在包含SessionID以保持流程通用）
+	c.JSON(http.StatusOK, LoginResponse{
+		Success:    true,
+		GatewayURL: s.config.GatewayLBURL,
+		SessionID:  sessionID, // 返回sessionID保持流程通用
+		Username:   guestUsername,
+		OpenID:     guestOpenID,
+		ExpiresIn:  86400, // 24小时
+	})
 }
