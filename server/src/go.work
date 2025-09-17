@@ -1,9 +1,10 @@
 go 1.23.2
 
 use (
-    ./common
-    ./servers/login
-    ./servers/game
-    ./servers/battle
-    ./servers/match
+	./common
+	./servers/battle
+	./servers/game
+	./servers/login
+	./servers/match
+	./servers/test_client
 )

@@ -136,6 +136,7 @@ func testRedisConnection(redis *redisutil.RedisPool) error {
 
 // 处理登录请求（统一接口，支持普通用户和游客）
 func (s *LoginServer) handleLogin(c *gin.Context) {
+	log.Printf("Received login request")
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, LoginResponse{
@@ -299,12 +300,13 @@ func (s *LoginServer) shutdown() {
 	log.Println("LoginServer shutdown complete")
 }
 
-
-
 // 处理游客登录逻辑（修改：返回游客认证信息，而不是session token）
 func (s *LoginServer) processGuestLogin(c *gin.Context, req LoginRequest) {
+	log.Printf("Processing guest login for device: %s", req.DeviceID)
+
 	// 验证设备ID
 	if req.DeviceID == "" {
+		log.Printf("Guest login failed: empty device ID")
 		c.JSON(http.StatusBadRequest, LoginResponse{
 			Success: false,
 			Error:   "Device ID is required for guest login",
@@ -315,9 +317,11 @@ func (s *LoginServer) processGuestLogin(c *gin.Context, req LoginRequest) {
 	// 直接在本地创建游客身份，不与平台交互
 	guestOpenID := "guest_" + req.DeviceID
 	guestUsername := "guest_" + req.DeviceID
+	log.Printf("Created guest identity: username=%s, openid=%s", guestUsername, guestOpenID)
 
 	// 生成session ID用于保持流程通用
 	sessionID := uuid.New().String()
+	log.Printf("Generated session ID: %s", sessionID)
 
 	// 创建游客session数据
 	now := time.Now()
@@ -329,27 +333,33 @@ func (s *LoginServer) processGuestLogin(c *gin.Context, req LoginRequest) {
 		ExpiresAt: expiresAt.Unix(),
 		AppID:     req.AppID,
 	}
+	log.Printf("Created session data: %+v", sessionData)
 
 	// 存储session到Redis
+	log.Printf("Storing session to Redis...")
 	if err := s.storeSession(sessionID, sessionData); err != nil {
+		log.Printf("Failed to store session: %v", err)
 		c.JSON(http.StatusInternalServerError, LoginResponse{
 			Success: false,
 			Error:   "Failed to create session: " + err.Error(),
 		})
 		return
 	}
+	log.Printf("Successfully stored session to Redis")
 
 	// 可以在这里做一些游客登录的控制逻辑
 	// 比如：分配较少的资源、设置不同的限制等
 	log.Printf("Guest login for device: %s, allocated resources: limited", req.DeviceID)
 
 	// 返回游客认证信息（现在包含SessionID以保持流程通用）
-	c.JSON(http.StatusOK, LoginResponse{
+	response := LoginResponse{
 		Success:    true,
 		GatewayURL: s.config.GatewayLBURL,
 		SessionID:  sessionID, // 返回sessionID保持流程通用
 		Username:   guestUsername,
 		OpenID:     guestOpenID,
 		ExpiresIn:  86400, // 24小时
-	})
+	}
+	log.Printf("Sending successful response: %+v", response)
+	c.JSON(http.StatusOK, response)
 }

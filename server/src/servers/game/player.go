@@ -256,13 +256,15 @@ func (p *Player) Run() {
 			case <-p.ctx.Done():
 				return
 			case msg := <-p.RecvChan:
-				slog.Info("Received message", "message", msg)
+				slog.Info("Received message", "message_id", msg.GetId(), "player_id", p.Uid, "message", msg)
 				if msg.GetId() != pb.MessageId_AUTH_REQUEST && !p.Authenticated {
 					slog.Warn("Unauthenticated player attempted to send message",
 						"conn_uuid", p.ConnUUID, "msg_id", msg.GetId())
 					return
 				}
+				slog.Info("Handling message", "message_id", msg.GetId(), "player_id", p.Uid)
 				MsgHandler.HandleMessage(p, msg)
+				slog.Info("Finished handling message", "message_id", msg.GetId(), "player_id", p.Uid)
 			}
 		}
 	}()

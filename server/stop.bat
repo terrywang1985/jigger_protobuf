@@ -1,34 +1,40 @@
 @echo off
-chcp 65001 > nul
 
-echo === 停止 jigger_protobuf 服务器 ===
+echo ================================
+echo    Stop jigger_protobuf Servers
+echo ================================
 
-REM 停止所有相关进程
-echo 🛑 停止 Login Server...
+REM Stop all related processes
+echo.
+echo [1/3] Stopping Login Server...
 taskkill /f /im login-server.exe 2>nul
 if %errorlevel% equ 0 (
-    echo ✅ Login Server 已停止
+    echo OK: Login Server stopped
 ) else (
-    echo ℹ️ Login Server 未运行
-)
-
-echo 🛑 停止 Game Server...
-taskkill /f /im game-server.exe 2>nul
-if %errorlevel% equ 0 (
-    echo ✅ Game Server 已停止
-) else (
-    echo ℹ️ Game Server 未运行
-)
-
-echo 🛑 停止 Battle Server...
-taskkill /f /im battle-server.exe 2>nul
-if %errorlevel% equ 0 (
-    echo ✅ Battle Server 已停止
-) else (
-    echo ℹ️ Battle Server 未运行
+    echo Info: Login Server not running
 )
 
 echo.
-echo === 所有服务器已停止 ===
-echo 💡 使用 start.bat 重新启动所有服务器
+echo [2/3] Stopping Game Server...
+taskkill /f /im game-server.exe 2>nul
+if %errorlevel% equ 0 (
+    echo OK: Game Server stopped
+) else (
+    echo Info: Game Server not running
+)
+
+echo.
+echo [3/3] Stopping Battle Server...
+taskkill /f /im battle-server.exe 2>nul
+if %errorlevel% equ 0 (
+    echo OK: Battle Server stopped
+) else (
+    echo Info: Battle Server not running
+)
+
+echo.
+echo ================================
+echo    All servers have been stopped
+echo ================================
+echo Tip: Use start.bat to restart all servers
 pause

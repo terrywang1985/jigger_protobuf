@@ -19,6 +19,31 @@ from io import BytesIO
 import logging
 import struct
 
+# 清理代理环境变量，确保本地连接不走代理
+def clear_proxy_env():
+    """清理代理环境变量以确保本地连接"""
+    proxy_vars = [
+        'HTTP_PROXY', 'HTTPS_PROXY', 'FTP_PROXY', 'SOCKS_PROXY',
+        'http_proxy', 'https_proxy', 'ftp_proxy', 'socks_proxy',
+        'ALL_PROXY', 'all_proxy'
+    ]
+    
+    cleared_vars = []
+    for var in proxy_vars:
+        if var in os.environ:
+            old_value = os.environ[var]
+            del os.environ[var]
+            cleared_vars.append(f"{var}={old_value}")
+    
+    if cleared_vars:
+        print(f"[INFO] 已清理代理环境变量: {', '.join(cleared_vars)}")
+        print("[INFO] 这确保了本地服务器连接不会被代理")
+    else:
+        print("[INFO] 未检测到代理环境变量")
+
+# 在模块加载时立即清理代理设置
+clear_proxy_env()
+
 # 导入protobuf生成的类
 import game_pb2 as game_pb
 import desktop_pet_pb2 as desktop_pet_pb
@@ -60,6 +85,7 @@ class ProtobufClient:
     async def send_message(self, msg_id, proto_data):
         """发送protobuf消息"""
         if not self.ws:
+            print(f"无法发送消息，WebSocket连接不存在: msg_id={msg_id}")
             return
             
         try:
@@ -71,12 +97,36 @@ class ProtobufClient:
             
             # 打包并发送
             packed_data = self.pack_message(message)
+            print(f"正在发送消息: ID={msg_id}, 序列号={message.msgSerialNo}, 数据长度={len(data)}")
             await self.ws.send(packed_data)
             
-            print(f"Sent message: {msg_id}, data length: {len(data)}")
+            print(f"消息发送成功: {msg_id}, data length: {len(data)}")
             
         except Exception as e:
-            print(f"Failed to send message: {e}")
+            print(f"发送消息失败: msg_id={msg_id}, error={e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def send_raw_message(self, msg_id, raw_data):
+        """发送原始数据消息（用于发送JSON或其他格式的数据）"""
+        if not self.ws:
+            return
+            
+        try:
+            # 直接使用原始数据
+            data = raw_data if isinstance(raw_data, bytes) else raw_data.encode('utf-8')
+            
+            # 创建消息
+            message = self.create_message(msg_id, data)
+            
+            # 打包并发送
+            packed_data = self.pack_message(message)
+            await self.ws.send(packed_data)
+            
+            print(f"Sent raw message: {msg_id}, data length: {len(data)}")
+            
+        except Exception as e:
+            print(f"Failed to send raw message: {e}")
     
     def unpack_message(self, data):
         """解包消息"""
@@ -106,6 +156,10 @@ class AuthManager:
         self.token = None
         self.openid = None
         self.app_id = "desktop_app"
+        self.device_id = str(uuid.uuid4())[:16]  # 生成设备ID用于游客登录
+        self.is_guest = False
+        self.session_id = None
+    
     def send_sms_code(self, country_code, phone, device_id=""):
         url = f"{PLATFORM_API}/auth/phone/send-code"
         data = {
@@ -117,7 +171,8 @@ class AuthManager:
         
         try:
             print(f"Sending SMS code to {country_code}{phone}, {url}")
-            response = requests.post(url, json=data)
+            # 显式禁用代理以确保本地连接
+            response = requests.post(url, json=data, proxies={"http": None, "https": None})
             if response.status_code == 200:
                 return True, "验证码已发送"
             else:
@@ -137,7 +192,8 @@ class AuthManager:
         }
         
         try:
-            response = requests.post(url, json=data)
+            # 显式禁用代理以确保本地连接
+            response = requests.post(url, json=data, proxies={"http": None, "https": None})
             if response.status_code == 200:
                 result = response.json()
                 self.token = result.get("token")
@@ -148,6 +204,44 @@ class AuthManager:
                 return False, error_msg, None
         except Exception as e:
             return False, f"网络错误: {str(e)}", None
+    
+    def guest_login(self):
+        """游客登录"""
+        url = "http://localhost:8081/login"  # 登录服务器地址
+        data = {
+            "device_id": self.device_id,
+            "app_id": self.app_id,
+            "is_guest": True
+        }
+        
+        try:
+            print(f"游客登录中... 设备ID: {self.device_id}")
+            print(f"请求数据: {data}")
+            # 显式禁用代理以确保本地连接
+            response = requests.post(url, json=data, timeout=10, proxies={"http": None, "https": None})
+            
+            print(f"HTTP状态码: {response.status_code}")
+            print(f"响应内容: {response.text}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    self.session_id = result.get("session_id")
+                    self.token = self.session_id  # 使用session_id作为token
+                    self.openid = result.get("openid")
+                    self.is_guest = True
+                    print(f"游客登录成功！用户名: {result.get('username')}")
+                    return True, "游客登录成功", result
+                else:
+                    error_msg = result.get("error", "游客登录失败")
+                    return False, error_msg, None
+            else:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                return False, error_msg, None
+                
+        except Exception as e:
+            print(f"请求异常: {str(e)}")
+            return False, f"网络错误: {str(e)}", None
 
 def resource_path(filename):
     if getattr(sys, "frozen", False):
@@ -157,9 +251,9 @@ def resource_path(filename):
     return os.path.join(os.path.dirname(__file__), filename)
 
 class DesktopPet:
-    def __init__(self, root, sprite_path, player_id, ws=None, is_self=True):
+    def __init__(self, root, sprite_path, player_id, client=None, is_self=True):
         self.root = root
-        self.ws = ws
+        self.client = client  # 修改为传入client对象
         self.player_id = player_id
         self.is_self = is_self
 
@@ -242,9 +336,8 @@ class DesktopPet:
 
     def send_chat(self, event=None):
         text = self.chat_entry.get()
-        if text.strip() and self.ws:
+        if text.strip() and self.client and self.client.ws:
             # 使用新的protobuf协议发送聊天消息
-            # 这里需要根据实际的聊天协议来调整
             asyncio.run_coroutine_threadsafe(
                 self.send_chat_message(text),
                 asyncio.get_event_loop()
@@ -252,15 +345,32 @@ class DesktopPet:
             self.chat_entry.delete(0, tk.END)
     
     async def send_chat_message(self, text):
-        """发送聊天消息（需要根据实际协议调整）"""
-        # 这里需要根据实际的聊天协议来实现
-        # 暂时使用简单的JSON格式作为过渡
-        chat_data = json.dumps({
-            "type": "chat",
-            "player_id": self.player_id,
-            "text": text
-        })
-        await self.ws.send(chat_data)
+        """发送聊天消息（使用protobuf格式）"""
+        try:
+            # 创建聊天数据
+            chat_data = {
+                "type": "pet_chat",
+                "player_id": str(self.player_id),
+                "player_name": f"用户{self.player_id}",
+                "chat_text": text,
+                "position_x": self.root.winfo_x(),
+                "position_y": self.root.winfo_y(),
+                "timestamp": int(time.time() * 1000)
+            }
+            
+            # 将聊天数据序列化为JSON字符串，然后转为bytes
+            chat_json = json.dumps(chat_data)
+            chat_bytes = chat_json.encode('utf-8')
+            
+            # 使用GAME_ACTION_NOTIFICATION消息ID发送（暂时方案）
+            await self.client.protobuf_client.send_raw_message(
+                game_pb.MessageId.GAME_ACTION_NOTIFICATION, 
+                chat_bytes
+            )
+            print(f"发送聊天消息: {text}")
+            
+        except Exception as e:
+            print(f"发送聊天消息失败: {e}")
 
     def animate(self):
         now = time.time()
@@ -301,7 +411,7 @@ class DesktopPet:
 
     def trigger_action(self):
         self.events.append(time.time())
-        if self.ws:
+        if self.client and self.client.ws:
             # 使用新的protobuf协议发送动作消息
             asyncio.run_coroutine_threadsafe(
                 self.send_action_message(),
@@ -309,13 +419,33 @@ class DesktopPet:
             )
     
     async def send_action_message(self):
-        """发送动作消息（需要根据实际协议调整）"""
-        # 暂时使用简单的JSON格式作为过渡
-        action_data = json.dumps({
-            "type": "action",
-            "player_id": self.player_id
-        })
-        await self.ws.send(action_data)
+        """发送动作消息（使用protobuf格式）"""
+        try:
+            # 创建GameAction消息（利用现有的协议）
+            # 这里需要根据实际的GameAction定义来构造
+            # 暂时发送一个简单的通知，包含位置信息
+            
+            # 创建动作数据
+            action_data = {
+                "type": "pet_move",
+                "player_id": str(self.player_id),
+                "position_x": self.root.winfo_x(),
+                "position_y": self.root.winfo_y(),
+                "timestamp": int(time.time() * 1000)
+            }
+            
+            # 将动作数据序列化为JSON字符串，然后转为bytes
+            action_json = json.dumps(action_data)
+            action_bytes = action_json.encode('utf-8')
+            
+            # 使用GAME_ACTION_NOTIFICATION消息ID发送
+            await self.client.protobuf_client.send_raw_message(
+                game_pb.MessageId.GAME_ACTION_NOTIFICATION, 
+                action_bytes
+            )
+            
+        except Exception as e:
+            print(f"发送动作消息失败: {e}")
 
     def receive_action(self):
         self.events.append(time.time())
@@ -641,11 +771,74 @@ class HomePage:
     def confirm_create_chatroom(self, name, password, window):
         if not name:
             messagebox.showerror("错误", "聊天室名称不能为空")
+            window.destroy()
             return
+            
+        # 使用protobuf协议发送创建房间请求
+        if hasattr(self, 'client') and self.client.ws and self.client.protobuf_client:
+            try:
+                print(f"准备发送创建房间请求: {name}")
+                print(f"websocket连接状态: {self.client.ws.open if hasattr(self.client.ws, 'open') else 'unknown'}")
+                
+                # 检查连接状态
+                is_open = False
+                if hasattr(self.client.ws, 'open'):
+                    is_open = self.client.ws.open
+                elif hasattr(self.client.ws, 'closed'):
+                    is_open = not self.client.ws.closed
+                else:
+                    # 如果无法确定状态，默认认为是打开的
+                    is_open = True
+                    
+                if not is_open:
+                    print("WebSocket连接未打开，无法发送消息")
+                    messagebox.showerror("错误", "WebSocket连接未打开")
+                    window.destroy()
+                    return
+                
+                # 使用protobuf客户端发送创建房间请求
+                print("开始发送创建房间请求...")
+                # 确保使用正确的事件循环
+                try:
+                    # 获取当前线程的事件循环
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    # 如果没有事件循环，使用默认循环
+                    loop = asyncio.get_event_loop_policy().get_event_loop()
+                
+                # 在事件循环中执行协程
+                future = asyncio.run_coroutine_threadsafe(
+                    self.client.send_create_room_request(name),
+                    loop
+                )
+                
+                # 等待结果
+                try:
+                    success = future.result(timeout=5)  # 5秒超时
+                    if success:
+                        print(f"创建房间请求发送成功: {name}")
+                    else:
+                        print(f"创建房间请求发送失败: {name}")
+                        messagebox.showerror("错误", "创建房间请求发送失败")
+                except Exception as e:
+                    print(f"等待创建房间请求发送结果超时: {e}")
+                    messagebox.showerror("错误", f"创建房间请求发送超时: {e}")
+                    
+            except Exception as e:
+                print(f"发送创建房间请求失败: {e}")
+                import traceback
+                traceback.print_exc()
+                messagebox.showerror("错误", f"创建房间请求发送失败: {e}")
+        else:
+            print("未连接到服务器或protobuf客户端未初始化")
+            print(f"client: {hasattr(self, 'client')}")
+            if hasattr(self, 'client'):
+                print(f"client.ws: {self.client.ws}")
+                print(f"client.protobuf_client: {self.client.protobuf_client if hasattr(self.client, 'protobuf_client') else 'None'}")
+            messagebox.showerror("错误", "未连接到服务器")
         
         window.destroy()
-        messagebox.showinfo("成功", f"聊天室 '{name}' 创建成功!")
-    
+
     def join_chatroom(self, room_name):
         messagebox.showinfo("加入聊天室", f"已加入 {room_name}")
     
@@ -778,10 +971,23 @@ class HomePage:
         )
     
     def show_phone_login(self):
-        title_label = ttk.Label(self.content_frame, text="手机号登录/注册", 
+        title_label = ttk.Label(self.content_frame, text="登录方式选择", 
                                font=('Arial', 16, 'bold'), background='#ecf0f1')
         title_label.pack(pady=10)
         
+        # 添加游客登录按钮
+        guest_frame = ttk.Frame(self.content_frame, style='Content.TFrame')
+        guest_frame.pack(fill=tk.X, pady=20, padx=20)
+        
+        guest_btn = ttk.Button(guest_frame, text="游客登录（快速体验）", 
+                              command=self.do_guest_login, 
+                              style='Action.TButton')
+        guest_btn.pack(pady=10)
+        
+        ttk.Label(guest_frame, text="或者使用手机号登录", 
+                 background='#ecf0f1', font=('Arial', 12)).pack(pady=10)
+        
+        # 手机号登录部分
         phone_frame = ttk.Frame(self.content_frame, style='Content.TFrame')
         phone_frame.pack(fill=tk.X, pady=10, padx=20)
         
@@ -812,7 +1018,7 @@ class HomePage:
         self.device_id.pack(side=tk.LEFT, padx=5)
         self.device_id.insert(0, str(uuid.uuid4())[:8])
         
-        login_btn = ttk.Button(self.content_frame, text="登录/注册", command=self.do_login)
+        login_btn = ttk.Button(self.content_frame, text="手机号登录/注册", command=self.do_login)
         login_btn.pack(pady=20)
         
         self.status_label = ttk.Label(self.content_frame, text="", background='#ecf0f1', foreground='#e74c3c')
@@ -821,6 +1027,20 @@ class HomePage:
         self.countdown = 0
         self.countdown_timer = None
     
+    def do_guest_login(self):
+        """执行游客登录"""
+        self.status_label.config(text="正在游客登录...")
+        threading.Thread(target=self._guest_login_thread, daemon=True).start()
+    
+    def _guest_login_thread(self):
+        """游客登录线程"""
+        success, message, result = self.auth.guest_login()
+        
+        if success:
+            self.window.after(0, lambda: self.on_login_success(result, is_guest=True))
+        else:
+            self.window.after(0, lambda: self.status_label.config(text=message))
+
     def send_verification_code(self):
         country_code = self.country_code.get().strip()
         phone = self.phone.get().strip()
@@ -868,12 +1088,18 @@ class HomePage:
         else:
             self.window.after(0, lambda: self.status_label.config(text=message))
     
-    def on_login_success(self, result):
+    def on_login_success(self, result, is_guest=False):
         self.status_label.config(text="登录成功!", foreground="#2ecc71")
+        
+        # 设置client对象到HomePage中
+        if not hasattr(self, 'client'):
+            self.client = JiggerClientForHome()
+            self.client.auth = self.auth
         
         self.client.connect_websocket()
         
-        messagebox.showinfo("登录成功", f"欢迎使用桌面宠物!\n您的OpenID: {self.auth.openid}")
+        login_type = "游客" if is_guest else "用户"
+        messagebox.showinfo("登录成功", f"欢迎使用桌面宠物!\n{login_type}登录成功\n您的OpenID: {self.auth.openid}")
         
         self.show_profile()
     
@@ -882,6 +1108,180 @@ class HomePage:
     
     def is_connected(self):
         return True
+
+class JiggerClientForHome:
+    """简化的客户端类，用于HomePage中的WebSocket连接"""
+    def __init__(self):
+        self.auth = None
+        self.ws = None
+        self.online = False
+        self.protobuf_client = ProtobufClient()
+        self.message_buffer = b''
+    
+    def connect_websocket(self):
+        if not self.auth or not self.auth.token:
+            print("未登录，无法连接WebSocket")
+            return
+        print("开始连接WebSocket...")
+        threading.Thread(target=self.ws_loop, daemon=True).start()
+    
+    def ws_loop(self):
+        print("WebSocket循环启动...")
+        asyncio.run(self.ws_main())
+    
+    async def ws_main(self):
+        uri = "ws://127.0.0.1:18080/ws"
+        print(f"尝试连接到WebSocket: {uri}")
+        try:
+            self.ws = await asyncio.wait_for(websockets.connect(uri), timeout=5)
+            self.protobuf_client.ws = self.ws
+            self.online = True
+            print("连接游戏服务器成功")
+            
+            # 发送认证请求
+            await self.send_auth_request()
+            
+            # 处理消息
+            print("开始接收消息...")
+            async for msg in self.ws:
+                await self.handle_websocket_message(msg)
+                
+        except Exception as e:
+            print(f"连接服务器失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.online = False
+    
+    async def send_auth_request(self):
+        """发送认证请求"""
+        if not self.auth.token:
+            print("未登录，无法认证")
+            return
+            
+        print("准备发送认证请求...")
+        # 创建认证请求
+        auth_request = game_pb.AuthRequest()
+        auth_request.token = self.auth.token
+        auth_request.protocol_version = "1.0"
+        auth_request.client_version = "1.0.0"
+        auth_request.device_type = "desktop"
+        auth_request.device_id = self.auth.device_id
+        auth_request.app_id = self.auth.app_id
+        auth_request.nonce = str(uuid.uuid4())
+        auth_request.timestamp = int(time.time() * 1000)
+        auth_request.signature = ""
+        auth_request.is_guest = self.auth.is_guest
+        
+        # 发送认证请求
+        await self.protobuf_client.send_message(game_pb.MessageId.AUTH_REQUEST, auth_request)
+        print("认证请求已发送")
+    
+    async def send_create_room_request(self, room_name):
+        """发送创建房间请求"""
+        if not self.ws or not self.protobuf_client:
+            print("WebSocket连接或protobuf客户端未初始化")
+            return False
+            
+        try:
+            print(f"准备发送创建房间请求: {room_name}")
+            # 创建创建房间请求
+            create_room_request = game_pb.CreateRoomRequest()
+            create_room_request.name = room_name
+            
+            # 发送创建房间请求
+            await self.protobuf_client.send_message(game_pb.MessageId.CREATE_ROOM_REQUEST, create_room_request)
+            print("创建房间请求已发送")
+            return True
+        except Exception as e:
+            print(f"发送创建房间请求失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    async def handle_websocket_message(self, msg):
+        """处理WebSocket消息"""
+        try:
+            if isinstance(msg, bytes):
+                self.message_buffer += msg
+            else:
+                self.message_buffer += msg.encode('utf-8')
+            
+            while True:
+                message, self.message_buffer = self.protobuf_client.unpack_message(self.message_buffer)
+                if message is None:
+                    break
+                await self.handle_protobuf_message(message)
+                
+        except Exception as e:
+            print(f"处理WebSocket消息错误: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def handle_protobuf_message(self, message):
+        """处理protobuf消息"""
+        try:
+            msg_id = message.id
+            print(f"Received message ID: {msg_id}")
+            
+            if msg_id == game_pb.MessageId.AUTH_RESPONSE:
+                await self.handle_auth_response(message)
+            elif msg_id == game_pb.MessageId.GAME_ACTION_NOTIFICATION:
+                await self.handle_game_action_notification(message)
+            elif msg_id == game_pb.MessageId.CREATE_ROOM_RESPONSE:
+                await self.handle_create_room_response(message)
+            else:
+                print(f"Unhandled message type: {msg_id}")
+                
+        except Exception as e:
+            print(f"处理protobuf消息错误: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def handle_game_action_notification(self, message):
+        """处理游戏动作通知"""
+        try:
+            # 解析JSON数据
+            action_json = message.data.decode('utf-8')
+            action_data = json.loads(action_json)
+            
+            action_type = action_data.get("type")
+            print(f"收到动作通知: {action_type}")
+            
+        except Exception as e:
+            print(f"处理游戏动作通知错误: {e}")
+    
+    async def handle_create_room_response(self, message):
+        """处理创建房间响应"""
+        try:
+            create_room_response = game_pb.CreateRoomResponse()
+            create_room_response.ParseFromString(message.data)
+            
+            if create_room_response.ret == game_pb.ErrorCode.OK:
+                room = create_room_response.room
+                print(f"创建房间成功: {room.name} (ID: {room.id})")
+                # 这里可以添加创建成功的UI反馈
+            else:
+                print(f"创建房间失败: 错误码 {create_room_response.ret}")
+                # 这里可以添加创建失败的UI反馈
+                
+        except Exception as e:
+            print(f"处理创建房间响应错误: {e}")
+    
+    async def handle_auth_response(self, message):
+        """处理认证响应"""
+        try:
+            auth_response = game_pb.AuthResponse()
+            auth_response.ParseFromString(message.data)
+            
+            if auth_response.ret == game_pb.ErrorCode.OK:
+                guest_info = "（游客）" if auth_response.is_guest else ""
+                print(f"认证成功{guest_info}! UID: {auth_response.uid}, 昵称: {auth_response.nickname}")
+                print(f"金币: {auth_response.gold}, 钻石: {auth_response.diamond}")
+            else:
+                print(f"认证失败: {auth_response.error_msg}")
+                
+        except Exception as e:
+            print(f"处理认证响应错误: {e}")
 
 class JiggerClient:
     def __init__(self, sprite_path):
@@ -899,7 +1299,7 @@ class JiggerClient:
         self.root = tk.Tk()
         self.root.withdraw()
 
-        self.start_pet(self.player_id, None, is_self=True)
+        self.start_pet(self.player_id, self, is_self=True)
 
         self.root.after(50, self.process_queue)
         self.root.mainloop()
@@ -911,9 +1311,9 @@ class JiggerClient:
             
         threading.Thread(target=self.ws_loop, daemon=True).start()
 
-    def start_pet(self, player_id, ws, is_self):
+    def start_pet(self, player_id, client, is_self):
         window = tk.Toplevel(self.root)
-        pet = DesktopPet(window, self.sprite_path, player_id, ws, is_self)
+        pet = DesktopPet(window, self.sprite_path, player_id, client, is_self)
         self.players[player_id] = pet
 
     def process_queue(self):
@@ -921,7 +1321,7 @@ class JiggerClient:
             event = self.event_queue.get()
             pid = event.get("player_id")
             if pid not in self.players:
-                self.start_pet(pid, self.ws, is_self=False)
+                self.start_pet(pid, self, is_self=False)
             pet = self.players[pid]
             if event["type"] == "action":
                 pet.receive_action()
@@ -969,11 +1369,12 @@ class JiggerClient:
         auth_request.protocol_version = "1.0"
         auth_request.client_version = "1.0.0"
         auth_request.device_type = "desktop"
-        auth_request.device_id = str(uuid.uuid4())[:8]
+        auth_request.device_id = self.auth.device_id
         auth_request.app_id = self.auth.app_id
         auth_request.nonce = str(uuid.uuid4())
         auth_request.timestamp = int(time.time() * 1000)
         auth_request.signature = ""  # 简化处理，不计算签名
+        auth_request.is_guest = self.auth.is_guest  # 添加游客标识
         
         # 发送认证请求
         await self.protobuf_client.send_message(game_pb.MessageId.AUTH_REQUEST, auth_request)
@@ -1008,6 +1409,8 @@ class JiggerClient:
                 await self.handle_auth_response(message)
             elif msg_id == game_pb.MessageId.GET_USER_INFO_RESPONSE:
                 await self.handle_user_info_response(message)
+            elif msg_id == game_pb.MessageId.GAME_ACTION_NOTIFICATION:
+                await self.handle_game_action_notification(message)
             # 可以添加更多消息处理
             else:
                 print(f"Unhandled message type: {msg_id}")
@@ -1022,7 +1425,8 @@ class JiggerClient:
             auth_response.ParseFromString(message.data)
             
             if auth_response.ret == game_pb.ErrorCode.OK:
-                print(f"认证成功! UID: {auth_response.uid}, 昵称: {auth_response.nickname}")
+                guest_info = "（游客）" if auth_response.is_guest else ""
+                print(f"认证成功{guest_info}! UID: {auth_response.uid}, 昵称: {auth_response.nickname}")
                 print(f"金币: {auth_response.gold}, 钻石: {auth_response.diamond}")
                 
                 # 认证成功后可以发送其他请求
@@ -1034,6 +1438,36 @@ class JiggerClient:
                 
         except Exception as e:
             print(f"处理认证响应错误: {e}")
+    
+    async def handle_game_action_notification(self, message):
+        """处理游戏动作通知（用于桌面宠物同步）"""
+        try:
+            # 解析JSON数据
+            action_json = message.data.decode('utf-8')
+            action_data = json.loads(action_json)
+            
+            action_type = action_data.get("type")
+            player_id = action_data.get("player_id")
+            
+            if action_type == "pet_chat":
+                # 处理聊天消息
+                self.event_queue.put({
+                    "type": "chat",
+                    "player_id": player_id,
+                    "text": action_data.get("chat_text")
+                })
+                print(f"收到聊天消息: {action_data.get('chat_text')}")
+                
+            elif action_type == "pet_move":
+                # 处理移动动作
+                self.event_queue.put({
+                    "type": "action",
+                    "player_id": player_id
+                })
+                print(f"收到移动动作: {player_id}")
+                
+        except Exception as e:
+            print(f"处理游戏动作通知错误: {e}")
     
     async def handle_user_info_response(self, message):
         """处理用户信息响应"""

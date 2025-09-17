@@ -1,51 +1,59 @@
 @echo off
-chcp 65001 > nul
 
-echo === 构建 jigger_protobuf 服务器 ===
+echo ================================
+echo    Build jigger_protobuf Servers
+echo ================================
 
-REM 创建 bin 目录（如果不存在）
+REM Create bin directory if it doesn't exist
 if not exist bin mkdir bin
 
-REM 设置环境变量
+REM Set environment variables
 set CGO_ENABLED=0
 set GOOS=windows
 set GOARCH=amd64
 
-REM 构建各个服务器
-echo 🔨 构建 Game Server...
+REM Build each server
+echo.
+echo [1/3] Building Game Server...
 cd src\servers\game
 go build -o ..\..\..\bin\game-server.exe .
 if %errorlevel% neq 0 (
-    echo ❌ Game Server 构建失败
+    echo Error: Game Server build failed
     exit /b 1
 )
 cd ..\..\..
 
-echo 🔨 构建 Battle Server...
+echo.
+echo [2/3] Building Battle Server...
 cd src\servers\battle
 go build -o ..\..\..\bin\battle-server.exe .
 if %errorlevel% neq 0 (
-    echo ❌ Battle Server 构建失败
+    echo Error: Battle Server build failed
     exit /b 1
 )
 cd ..\..\..
 
-echo 🔨 构建 Login Server...
+echo.
+echo [3/3] Building Login Server...
 cd src\servers\login
 go build -o ..\..\..\bin\login-server.exe .\loginserver.go
 if %errorlevel% neq 0 (
-    echo ❌ Login Server 构建失败
+    echo Error: Login Server build failed
     exit /b 1
 )
 cd ..\..\..
 
-echo ✅ 所有服务器构建完成！
+echo.
+echo ================================
+echo    All servers built successfully!
+echo ================================
 
 echo.
-echo === 构建结果 ===
+echo Build results:
 dir bin\*.exe
 
 echo.
-echo 💡 可执行文件位于 bin\ 目录
-echo 💡 配置文件位于 cfg\ 目录
-echo 💡 运行服务器前请确保在 server\ 目录下执行
+echo Tips:
+echo - Executables are located in the bin\ directory
+echo - Configuration files are in the cfg\ directory
+echo - Make sure to run servers from the server\ directory
