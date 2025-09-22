@@ -95,7 +95,7 @@ func main() {
 		RedisPass:    redisConfig.Password,
 		RedisDB:      redisConfig.DB,
 		PlatformAPI:  platformAPI,
-		GatewayLBURL: "gateway.example.com:9000",
+		GatewayLBURL: "ws://127.0.0.1:18080/ws",
 	}
 
 	// 初始化Redis连接池

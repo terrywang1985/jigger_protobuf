@@ -97,7 +97,7 @@ message GameStateNotify
 {
   uint64 be_notified_uid = 1; // 被通知的用户ID
   string room_id = 2;
-  battle.GameState game_state = 3; // 游戏状态
+  GameState game_state = 3; // 游戏状态
 }
 
 
@@ -106,7 +106,7 @@ message PlayerActionNotify {
   uint64 be_notified_uid = 1; // 被通知的用户ID
   string room_id = 2;
   uint64 player_id = 3;  //操作者 id
-  battle.GameAction action = 4;
+  GameAction action = 4;
 }
 
 message NotifyResponse{
